@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HAProxy UI</title>
+<style>
+:root{--bg:#f4f6f9;--karte:#fff;--text:#1d2430;--leise:#667085;--rand:#e3e7ee;--akzent:#0f6fd6;--ok:#12805c;--warn:#b26b00;--bad:#c4321c;--code:#f0f2f6;--schatten:0 1px 3px rgba(16,24,40,.08)}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--karte:#171c23;--text:#e6e9ee;--leise:#94a0b2;--rand:#29303b;--akzent:#4f9bff;--ok:#3cc28f;--warn:#e3a33a;--bad:#ff6b57;--code:#11161c;--schatten:none}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:var(--karte);border-bottom:1px solid var(--rand);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;font-weight:650;display:flex;align-items:center;gap:8px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{background:none;border:0;color:var(--leise);padding:7px 12px;border-radius:7px;font:inherit;cursor:pointer}
+nav button.an{background:var(--code);color:var(--text);font-weight:600}
+.rechts{margin-left:auto;display:flex;gap:8px;align-items:center}
+main{max-width:1200px;margin:0 auto;padding:20px 16px}
+.karte{background:var(--karte);border:1px solid var(--rand);border-radius:10px;padding:16px;box-shadow:var(--schatten);margin-bottom:16px}
+.karte h2{font-size:14px;margin:0 0 12px;font-weight:650}
+.kacheln{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.kachel{background:var(--karte);border:1px solid var(--rand);border-radius:10px;padding:14px;box-shadow:var(--schatten)}
+.kachel .w{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums}
+.kachel .l{color:var(--leise);font-size:12px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--rand);vertical-align:middle}
+th{color:var(--leise);font-weight:550;font-size:12px}
+td.z,th.z{text-align:right}
+.tab-wrap{overflow-x:auto}
+.punkt{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--leise)}
+.ok .punkt,.punkt.ok{background:var(--ok)}.warn .punkt,.punkt.warn{background:var(--warn)}.bad .punkt,.punkt.bad{background:var(--bad)}
+.marke{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;background:var(--code);color:var(--leise)}
+.marke.ok{color:var(--ok)}.marke.warn{color:var(--warn)}.marke.bad{color:var(--bad)}
+button.k,select,input,textarea{font:inherit;color:var(--text);background:var(--karte);border:1px solid var(--rand);border-radius:7px;padding:6px 10px}
+button.k{cursor:pointer}
+button.k:hover{border-color:var(--akzent)}
+button.p{background:var(--akzent);border-color:var(--akzent);color:#fff}
+button.gefahr{color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+textarea{width:100%;min-height:60vh;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--code);resize:vertical;tab-size:4}
+pre{background:var(--code);padding:12px;border-radius:8px;overflow:auto;font:12.5px/1.5 ui-monospace,Consolas,monospace;margin:0;max-height:65vh}
+pre .plus{color:var(--ok)}pre .minus{color:var(--bad)}pre .at{color:var(--akzent)}
+.leiste{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.leise{color:var(--leise)}
+.zwei{display:grid;grid-template-columns:220px 1fr;gap:16px}
+.liste button{display:block;width:100%;text-align:left;background:none;border:0;padding:7px 10px;border-radius:7px;color:var(--text);font:13px ui-monospace,Consolas,monospace;cursor:pointer}
+.liste button.an{background:var(--code);font-weight:600}
+td input,td select{width:100%}
+#hinweis{position:fixed;bottom:16px;right:16px;max-width:420px;background:var(--karte);border:1px solid var(--rand);border-radius:10px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.18);display:none;z-index:9}
+#anmelden{max-width:340px;margin:12vh auto}
+.versteckt{display:none!important}
+@media (max-width:760px){.zwei{grid-template-columns:1fr}header{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<div id="anmelden" class="karte versteckt">
+  <h2>HAProxy UI – Anmeldung</h2>
+  <form onsubmit="anmelden(event)">
+    <input id="pw" type="password" placeholder="Passwort" autocomplete="current-password" style="width:100%;margin-bottom:10px" autofocus>
+    <button class="k p" style="width:100%">Anmelden</button>
+    <div id="pwfehler" class="leise" style="margin-top:8px"></div>
+  </form>
+</div>
+
+<div id="app" class="versteckt">
+<header>
+  <h1><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="1.5" fill="currentColor"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/><circle cx="11" cy="18" r="1.5" fill="currentColor"/></svg>HAProxy</h1>
+  <nav id="nav">
+    <button data-s="uebersicht" class="an">Übersicht</button>
+    <button data-s="dienste">Dienste</button>
+    <button data-s="dateien">Dateien</button>
+    <button data-s="aenderungen">Änderungen <span id="offen" class="marke warn versteckt">offen</span></button>
+    <button data-s="zertifikate">Zertifikate</button>
+  </nav>
+  <div class="rechts">
+    <span id="waechter" class="marke"></span>
+    <button class="k" onclick="abmelden()">Abmelden</button>
+  </div>
+</header>
+<main>
+  <!-- Übersicht -->
+  <section id="s-uebersicht">
+    <div class="kacheln" id="kacheln"></div>
+    <div class="karte"><h2>Eingänge (Frontends)</h2><div class="tab-wrap"><table id="t-fe"></table></div></div>
+    <div class="karte"><h2>Ziele (Backends und Server)</h2><div class="tab-wrap"><table id="t-be"></table></div></div>
+  </section>
+
+  <!-- Dienste -->
+  <section id="s-dienste" class="versteckt">
+    <div class="karte">
+      <h2>Dienste nach Name (listen/dienste.map)</h2>
+      <p class="leise" style="margin-top:-6px">Name, wie er im Browser steht (SNI). <b>tls</b> = HAProxy beendet TLS mit Zertifikat aus Cert Warden, <b>durch</b> = verschlüsselt durchreichen. <b>intern</b> = nur aus internen Netzen.</p>
+      <div class="leiste">
+        <button class="k" onclick="dienstNeu()">+ Dienst</button>
+        <button class="k p" onclick="diensteSpeichern()">In bearbeiten/ speichern</button>
+        <span class="leise">Danach unter „Änderungen“ prüfen und übernehmen.</span>
+      </div>
+      <div class="tab-wrap"><table id="t-dienste"></table></div>
+      <datalist id="be-liste"></datalist>
+    </div>
+  </section>
+
+  <!-- Dateien -->
+  <section id="s-dateien" class="versteckt">
+    <div class="zwei">
+      <div class="karte liste">
+        <h2>bearbeiten/</h2>
+        <div id="dateiliste"></div>
+        <button class="k" style="margin-top:10px;width:100%" onclick="neueListe()">+ neue Liste</button>
+      </div>
+      <div class="karte">
+        <div class="leiste"><b id="dateiname">–</b><span class="leise" id="dateistatus"></span>
+          <span class="rechts"><button class="k p" onclick="dateiSpeichern()">Speichern</button></span></div>
+        <textarea id="editor" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- Änderungen -->
+  <section id="s-aenderungen" class="versteckt">
+    <div class="karte">
+      <div class="leiste">
+        <button class="k" onclick="auftrag('pruefen')">Prüfen</button>
+        <button class="k p" onclick="auftrag('uebernehmen')">Prüfen und übernehmen</button>
+        <button class="k" onclick="verwerfen()">Änderungen verwerfen</button>
+        <button class="k gefahr" onclick="auftrag('zurueck')">Auf vorige Konfiguration zurück</button>
+      </div>
+      <h2>Unterschied bearbeiten/ → aktiv/</h2>
+      <pre id="diff">–</pre>
+    </div>
+    <div class="karte"><h2>Letzter Auftrag</h2><div id="auftrag-kopf" class="leise" style="margin-bottom:8px">–</div><pre id="auftrag-log"></pre></div>
+  </section>
+
+  <!-- Zertifikate -->
+  <section id="s-zertifikate" class="versteckt">
+    <div class="karte">
+      <div class="leiste"><h2 style="margin:0">Zertifikate in HAProxy (certs/)</h2>
+        <span class="rechts"><button class="k" onclick="auftrag('zertifikate')">Jetzt aus Cert Warden holen</button></span></div>
+      <div class="tab-wrap"><table id="t-zert"></table></div>
+    </div>
+    <div class="karte">
+      <h2>Zuordnung (certs.conf)</h2>
+      <p class="leise" style="margin-top:-6px">Je Zeile: <code>&lt;name-in-cert-warden&gt; &lt;zertifikat-api-key&gt;.&lt;schluessel-api-key&gt;</code>. Wird sofort wirksam beim nächsten Abruf.</p>
+      <textarea id="certsconf" spellcheck="false" style="min-height:160px"></textarea>
+      <div class="leiste" style="margin-top:8px"><button class="k p" onclick="certsSpeichern()">Speichern</button></div>
+    </div>
+  </section>
+</main>
+</div>
+<div id="hinweis"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let seite = 'uebersicht', aktDatei = null, dienste = [], timer = null, letzterAuftrag = null;
+
+async function api(pfad, daten) {
+  const opt = daten === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-HapUI':'1'}, body:JSON.stringify(daten)};
+  const r = await fetch(pfad, opt);
+  if (r.status === 401) { zeigeAnmeldung(); throw new Error('nicht angemeldet'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.fehler || r.statusText);
+  return j;
+}
+function hinweis(text, art) {
+  const h = $('#hinweis'); h.innerHTML = `<span class="punkt ${art||'ok'}"></span>${esc(text)}`; h.style.display = 'block';
+  clearTimeout(h._t); h._t = setTimeout(() => h.style.display = 'none', 5000);
+}
+function zeigeAnmeldung() { $('#app').classList.add('versteckt'); $('#anmelden').classList.remove('versteckt'); clearInterval(timer); }
+async function anmelden(e) {
+  e.preventDefault();
+  try { await api('/api/anmelden', {passwort: $('#pw').value}); $('#pw').value=''; start(); }
+  catch (err) { $('#pwfehler').textContent = err.message; }
+}
+async function abmelden() { await api('/api/abmelden', {}).catch(()=>{}); zeigeAnmeldung(); }
+
+document.querySelectorAll('#nav button').forEach(b => b.onclick = () => wechsel(b.dataset.s));
+function wechsel(s) {
+  seite = s;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('an', b.dataset.s === s));
+  document.querySelectorAll('main > section').forEach(x => x.classList.toggle('versteckt', x.id !== 's-' + s));
+  laden();
+}
+
+const groesse = b => b > 1e9 ? (b/1e9).toFixed(1)+' GB' : b > 1e6 ? (b/1e6).toFixed(1)+' MB' : b > 1e3 ? (b/1e3).toFixed(0)+' kB' : b+' B';
+const statusKlasse = s => /^(UP|OPEN)/.test(s) ? 'ok' : /^(DOWN|MAINT|NOLB)/.test(s) ? 'bad' : 'warn';
+
+async function laden() {
+  try {
+    if (seite === 'uebersicht' || seite === 'zertifikate' || seite === 'aenderungen') await zustandLaden();
+    if (seite === 'dienste') await diensteLaden();
+    if (seite === 'dateien') await dateienLaden();
+    if (seite === 'aenderungen') $('#diff').innerHTML = diffHtml((await api('/api/diff')).diff);
+    if (seite === 'zertifikate') $('#certsconf').value = (await api('/api/datei?pfad=certs.conf')).text;
+  } catch (e) { if (e.message !== 'nicht angemeldet') hinweis(e.message, 'bad'); }
+}
+
+async function zustandLaden() {
+  const z = await api('/api/zustand');
+  $('#offen').classList.toggle('versteckt', !z.offen);
+  const w = $('#waechter');
+  w.className = 'marke ' + (z.auftrag.waechter ? 'ok' : 'bad');
+  w.textContent = z.auftrag.waechter ? 'HAProxy verbunden' : 'HAProxy-Wächter fehlt';
+  w.title = z.auftrag.waechter ? 'Aufträge werden im HAProxy-Container ausgeführt' : 'Läuft haproxy-unraid mit demselben Konfigurationsordner?';
+  zeigeAuftrag(z.auftrag);
+  const zl = z.stats.zeilen;
+  const fe = zl.filter(r => r.typ === 'frontend'), be = zl.filter(r => r.typ !== 'frontend');
+  const sum = k => fe.reduce((a, r) => a + r[k], 0);
+  const unten = be.filter(r => r.typ === 'server' && statusKlasse(r.status) === 'bad').length;
+  const bald = z.zertifikate.filter(c => c.tage !== null && c.tage !== undefined && c.tage < 14 && !c.datei.startsWith('000-')).length;
+  $('#kacheln').innerHTML = [
+    ['Zustand', z.stats.fehler ? 'nicht erreichbar' : 'läuft', z.stats.fehler ? 'bad' : 'ok', z.stats.fehler || z.hap_url],
+    ['Sitzungen jetzt', sum('scur'), '', 'über alle Eingänge'],
+    ['Anfragen / s', sum('rate'), '', 'neue Verbindungen pro Sekunde'],
+    ['Server down', unten, unten ? 'bad' : 'ok', 'von ' + be.filter(r => r.typ === 'server').length],
+    ['Zertifikate < 14 Tage', bald, bald ? 'warn' : 'ok', z.zertifikate.length + ' in certs/'],
+    ['Home Assistant', z.mqtt.aktiv ? (z.mqtt.verbunden ? 'MQTT verbunden' : 'MQTT getrennt') : 'aus', z.mqtt.aktiv ? (z.mqtt.verbunden ? 'ok' : 'bad') : '', z.mqtt.fehler || ''],
+  ].map(([l, w, k, t]) => `<div class="kachel ${k}" title="${esc(t)}"><div class="l">${k?'<span class="punkt"></span>':''}${esc(l)}</div><div class="w">${esc(w)}</div><div class="l">${esc(t)}</div></div>`).join('');
+  $('#t-fe').innerHTML = '<tr><th>Name</th><th>Status</th><th class="z">Sitzungen</th><th class="z">max</th><th class="z">gesamt</th><th class="z">Rate</th><th class="z">abgelehnt</th><th class="z">ein</th><th class="z">aus</th></tr>' +
+    fe.map(r => `<tr><td>${esc(r.proxy)}</td><td class="${statusKlasse(r.status)}"><span class="punkt"></span>${esc(r.status)}</td><td class="z">${r.scur}</td><td class="z">${r.smax}</td><td class="z">${r.stot}</td><td class="z">${r.rate}</td><td class="z">${r.ereq}</td><td class="z">${groesse(r.bin)}</td><td class="z">${groesse(r.bout)}</td></tr>`).join('');
+  $('#t-be').innerHTML = '<tr><th>Backend</th><th>Server</th><th>Status</th><th>Prüfung</th><th class="z">Sitzungen</th><th class="z">gesamt</th><th class="z">5xx</th><th class="z">Verb.-Fehler</th><th class="z">seit</th></tr>' +
+    be.map(r => `<tr><td>${r.typ==='backend'?'<b>'+esc(r.proxy)+'</b>':'<span class="leise">'+esc(r.proxy)+'</span>'}</td><td>${r.typ==='backend'?'<span class="leise">gesamt</span>':esc(r.name)}</td><td class="${statusKlasse(r.status)}"><span class="punkt"></span>${esc(r.status)}</td><td class="leise">${esc(r.check)}</td><td class="z">${r.scur}</td><td class="z">${r.stot}</td><td class="z">${r.hrsp_5xx}</td><td class="z">${r.econ}</td><td class="z">${dauer(r.lastchg)}</td></tr>`).join('');
+  $('#t-zert').innerHTML = '<tr><th>Datei</th><th>Name (CN)</th><th>weitere Namen</th><th>gültig bis</th><th class="z">Tage</th></tr>' +
+    z.zertifikate.map(c => { const k = c.tage == null ? 'bad' : c.tage < 7 ? 'bad' : c.tage < 21 ? 'warn' : 'ok';
+      return `<tr><td>${esc(c.datei)}</td><td>${esc(c.cn||c.fehler)}</td><td class="leise">${esc((c.namen||[]).join(', '))}</td><td>${c.ende?new Date(c.ende).toLocaleString('de-DE'):'–'}</td><td class="z ${k}"><span class="punkt"></span>${c.tage ?? '–'}</td></tr>`; }).join('');
+}
+const dauer = s => !s ? '' : s < 3600 ? Math.round(s/60)+' min' : s < 172800 ? Math.round(s/3600)+' h' : Math.round(s/86400)+' d';
+
+function zeigeAuftrag(a) {
+  const e = a.ergebnis;
+  if (a.laeuft) { $('#auftrag-kopf').innerHTML = '<span class="marke warn">läuft …</span>'; return; }
+  if (!e) return;
+  $('#auftrag-kopf').innerHTML = `<span class="marke ${e.code===0?'ok':'bad'}">${e.code===0?'OK':'Fehler'}</span> ${esc(e.aktion)} · ${new Date(e.zeit).toLocaleString('de-DE')}`;
+  $('#auftrag-log').textContent = e.log;
+  if (letzterAuftrag && e.id === letzterAuftrag) {
+    letzterAuftrag = null;
+    hinweis(`${e.aktion}: ${e.code===0?'erfolgreich':'fehlgeschlagen – siehe Änderungen'}`, e.code===0?'ok':'bad');
+    laden();
+  }
+}
+async function auftrag(aktion) {
+  if (aktion === 'zurueck' && !confirm('Auf die vorige Konfiguration zurückspringen?')) return;
+  try { letzterAuftrag = (await api('/api/auftrag', {aktion})).id; hinweis('Auftrag gestellt …', 'warn'); wechselFalls(aktion); warten(); }
+  catch (e) { hinweis(e.message, 'bad'); }
+}
+function wechselFalls(a) { if (a !== 'zertifikate' && seite !== 'aenderungen') wechsel('aenderungen'); }
+async function warten() {
+  for (let i = 0; i < 120 && letzterAuftrag; i++) { await new Promise(r => setTimeout(r, 1000)); zeigeAuftrag(await api('/api/auftrag')); }
+  if (letzterAuftrag) { hinweis('Keine Antwort vom HAProxy-Container', 'bad'); letzterAuftrag = null; }
+}
+async function verwerfen() {
+  if (!confirm('Alle Änderungen in bearbeiten/ verwerfen und auf den aktiven Stand setzen?')) return;
+  await api('/api/verwerfen', {}); hinweis('Verworfen'); laden();
+}
+function diffHtml(d) {
+  if (!d) return '<span class="leise">Keine Änderungen – bearbeiten/ entspricht aktiv/.</span>';
+  return d.split('\n').map(z => `<span class="${z.startsWith('+')?'plus':z.startsWith('-')?'minus':z.startsWith('@@')?'at':''}">${esc(z)}</span>`).join('\n');
+}
+
+// Dienste
+async function diensteLaden() {
+  const j = await api('/api/dienste'); dienste = j.dienste;
+  $('#be-liste').innerHTML = j.backends.map(b => `<option value="${esc(b)}">`).join('');
+  zeichneDienste();
+}
+function zeichneDienste() {
+  const sel = (feld, i, werte) => `<select onchange="dienste[${i}].${feld}=this.value">${werte.map(w => `<option ${dienste[i][feld]===w?'selected':''}>${w}</option>`).join('')}</select>`;
+  $('#t-dienste').innerHTML = '<tr><th>Name</th><th>Backend</th><th>Zugang</th><th>Modus</th><th>Notiz</th><th></th></tr>' +
+    dienste.map((d, i) => `<tr><td><input value="${esc(d.name)}" oninput="dienste[${i}].name=this.value" placeholder="dienst.example.de"></td>
+      <td><input list="be-liste" value="${esc(d.backend)}" oninput="dienste[${i}].backend=this.value"></td>
+      <td>${sel('zugang', i, ['intern','alle'])}</td><td>${sel('modus', i, ['tls','durch'])}</td>
+      <td><input value="${esc(d.notiz)}" oninput="dienste[${i}].notiz=this.value"></td>
+      <td><button class="k gefahr" title="entfernen" onclick="dienste.splice(${i},1);zeichneDienste()">✕</button></td></tr>`).join('');
+}
+function dienstNeu() { dienste.push({name:'', backend:'', zugang:'intern', modus:'tls', notiz:''}); zeichneDienste(); }
+async function diensteSpeichern() {
+  try { await api('/api/dienste', {dienste}); hinweis('Gespeichert in bearbeiten/ – noch nicht übernommen'); zustandLaden(); }
+  catch (e) { hinweis(e.message, 'bad'); }
+}
+
+// Dateien
+async function dateienLaden() {
+  const j = await api('/api/dateien');
+  $('#dateiliste').innerHTML = j.dateien.filter(d => d !== 'certs.conf').map(d => `<button class="${d===aktDatei?'an':''}" onclick="dateiOeffnen('${esc(d)}')">${esc(d)}</button>`).join('');
+  if (!aktDatei && j.dateien.length) dateiOeffnen(j.dateien[0]);
+}
+async function dateiOeffnen(p) {
+  const ed = $('#editor');
+  if (ed.dataset.geaendert === '1' && !confirm('Ungespeicherte Änderungen verwerfen?')) return;
+  aktDatei = p; const j = await api('/api/datei?pfad=' + encodeURIComponent(p));
+  ed.value = j.text; ed.dataset.geaendert = '0'; $('#dateiname').textContent = 'bearbeiten/' + p; $('#dateistatus').textContent = '';
+  document.querySelectorAll('#dateiliste button').forEach(b => b.classList.toggle('an', b.textContent === p));
+}
+$('#editor').addEventListener('input', e => { e.target.dataset.geaendert = '1'; $('#dateistatus').textContent = '● geändert'; });
+$('#editor').addEventListener('keydown', e => {
+  if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart; t.setRangeText('    ', s, t.selectionEnd, 'end'); t.dispatchEvent(new Event('input')); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); dateiSpeichern(); }
+});
+async function dateiSpeichern() {
+  if (!aktDatei) return;
+  try { await api('/api/datei', {pfad: aktDatei, text: $('#editor').value}); $('#editor').dataset.geaendert = '0'; $('#dateistatus').textContent = 'gespeichert'; hinweis('Gespeichert in bearbeiten/ – noch nicht übernommen'); zustandLaden(); }
+  catch (e) { hinweis(e.message, 'bad'); }
+}
+async function neueListe() {
+  const n = prompt('Name der neuen Liste (z. B. erlaubt.lst):'); if (!n) return;
+  try { const j = await api('/api/neue-liste', {name: n}); await dateienLaden(); dateiOeffnen(j.pfad); } catch (e) { hinweis(e.message, 'bad'); }
+}
+async function certsSpeichern() {
+  try { await api('/api/datei', {pfad: 'certs.conf', text: $('#certsconf').value}); hinweis('certs.conf gespeichert'); } catch (e) { hinweis(e.message, 'bad'); }
+}
+window.addEventListener('beforeunload', e => { if ($('#editor').dataset.geaendert === '1') e.preventDefault(); });
+
+async function start() {
+  try { await api('/api/zustand'); } catch { return; }
+  $('#anmelden').classList.add('versteckt'); $('#app').classList.remove('versteckt');
+  laden(); clearInterval(timer);
+  timer = setInterval(() => { if (seite === 'uebersicht' || seite === 'zertifikate') zustandLaden().catch(()=>{}); }, 10000);
+}
+start();
+</script>
+</body>
+</html>
