@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>haproxy-ui</Name>
+  <Repository>ghcr.io/sysrix/haproxy-ui:latest</Repository>
+  <Registry>https://github.com/SysriX/haproxy-ui_unraid/pkgs/container/haproxy-ui</Registry>
+  <Network>br0</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/SysriX/haproxy-ui_unraid/issues</Support>
+  <Project>https://github.com/SysriX/haproxy-ui_unraid</Project>
+  <ReadMe>https://github.com/SysriX/haproxy-ui_unraid/blob/main/README.md</ReadMe>
+  <Overview>Weboberfläche für haproxy-unraid: Dienste per Tabelle pflegen (Name, Backend, intern/alle, TLS-Ende/Durchreichen), alle Konfigurationsdateien bearbeiten, Unterschied zur laufenden Konfiguration ansehen und mit einem Klick prüfen, übernehmen oder zurückspringen. Die Übernahme läuft im HAProxy-Container über hap-uebernehmen – also immer mit Prüfung und automatischem Rücksprung. Dazu Live-Statistik (Eingänge, Backends, Server, Fehler) und Ablaufdaten der Zertifikate.&#xD;
+&#xD;
+Optional: Statistik und Zertifikats-Restlaufzeiten per MQTT-Discovery an Home Assistant (Gerät „HAProxy“ mit Sensoren je Eingang/Backend und Zertifikat).&#xD;
+&#xD;
+Wichtig: Denselben appdata-Ordner wie bei haproxy-unraid einbinden.</Overview>
+  <Category>Network:Proxy Network:Management Tools:</Category>
+  <ExtraSearchTerms>haproxy web ui gui dashboard config editor statistics home assistant mqtt</ExtraSearchTerms>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/SysriX/haproxy-ui_unraid/main/templates/haproxy-ui.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/SysriX/haproxy-ui_unraid/main/icon.svg</Icon>
+  <ExtraParams>--hostname haproxy-ui --log-opt max-size=10m --log-opt max-file=3</ExtraParams>
+  <PostArgs/>
+  <Requires>haproxy-unraid (gleicher appdata-Ordner). Für Home Assistant: MQTT-Broker (z. B. Mosquitto) mit MQTT-Integration in Home Assistant.</Requires>
+  <License>MIT</License>
+  <Config Name="HAProxy-Konfiguration" Target="/haproxy" Default="/mnt/user/appdata/haproxy" Mode="rw" Description="DERSELBE Ordner wie „Konfiguration“ bei haproxy-unraid (z. B. /mnt/disk1/appdata/haproxy)." Type="Path" Display="always" Required="true" Mask="false">/mnt/disk1/appdata/haproxy</Config>
+  <Config Name="Passwort" Target="UI_PASS" Default="" Mode="" Description="Passwort für die Anmeldung an der Weboberfläche." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="HAProxy-Statistik" Target="HAP_URL" Default="http://&lt;IP_HAProxy&gt;:8404" Mode="" Description="Adresse der HAProxy-Statistik, z. B. http://&lt;IP_HAProxy&gt;:8404. Die IP von haproxy-ui muss in listen/intern-netze.lst liegen." Type="Variable" Display="always" Required="true" Mask="false">http://&lt;IP_HAProxy&gt;:8404</Config>
+  <Config Name="Statistik-Passwort" Target="STATS_PASS" Default="" Mode="" Description="Gleiches Statistik-Passwort wie bei haproxy-unraid (Benutzer admin)." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="MQTT-Broker" Target="MQTT_HOST" Default="" Mode="" Description="IP oder Name des MQTT-Brokers für Home Assistant. Leer = keine Meldung an Home Assistant." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="MQTT-Port" Target="MQTT_PORT" Default="1883" Mode="" Description="Port des MQTT-Brokers." Type="Variable" Display="advanced" Required="false" Mask="false">1883</Config>
+  <Config Name="MQTT-Benutzer" Target="MQTT_USER" Default="" Mode="" Description="Benutzer am MQTT-Broker." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="MQTT-Passwort" Target="MQTT_PASS" Default="" Mode="" Description="Passwort am MQTT-Broker." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="MQTT-Intervall" Target="MQTT_INTERVALL" Default="60" Mode="" Description="Sekunden zwischen zwei Meldungen an Home Assistant." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
+  <Config Name="Gerätename in Home Assistant" Target="HA_GERAET" Default="haproxy" Mode="" Description="Name des Geräts in Home Assistant (bei mehreren HAProxy unterschiedlich wählen)." Type="Variable" Display="advanced" Required="false" Mask="false">haproxy</Config>
+  <Config Name="Discovery-Präfix" Target="MQTT_PREFIX" Default="homeassistant" Mode="" Description="MQTT-Discovery-Präfix von Home Assistant." Type="Variable" Display="advanced" Required="false" Mask="false">homeassistant</Config>
+  <Config Name="Zeitzone" Target="TZ" Default="Europe/Berlin" Mode="" Description="Zeitzone für Logs." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Berlin</Config>
+</Container>

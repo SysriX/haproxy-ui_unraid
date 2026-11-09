@@ -1,0 +1,7 @@
+.git
+.github
+templates
+icon.svg
+*.md
+LICENSE
+**/__pycache__

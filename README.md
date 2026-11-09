@@ -1,6 +1,8 @@
 # haproxy-ui
 
-Weboberfläche für [haproxy-unraid](../haproxy/README.md): HAProxy bequem im Browser konfigurieren, Statistik ansehen und optional an Home Assistant melden.
+Weboberfläche für [haproxy-unraid](https://github.com/SysriX/haproxy_unraid): HAProxy bequem im Browser konfigurieren, Statistik ansehen und optional an Home Assistant melden.
+
+Teil der Sammlung [unraid-images](https://github.com/SysriX/unraid-images) – Übersicht aller Pakete.
 
 `ghcr.io/sysrix/haproxy-ui:latest`
 
@@ -62,3 +64,9 @@ Voraussetzung: MQTT-Broker (z. B. Mosquitto) und die MQTT-Integration in Home As
 ## Updates
 
 Neu gebaut, sobald das offizielle Python-Image aktualisiert wird; Unraid zeigt dann „Update verfügbar“.
+
+## Hilfe
+
+Fragen und Fehler bitte als [GitHub-Issue](https://github.com/SysriX/haproxy-ui_unraid/issues).
+
+Lizenz: MIT – siehe [LICENSE](LICENSE). Python steht unter eigener Lizenz.

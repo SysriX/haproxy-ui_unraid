@@ -1,0 +1,118 @@
+# Baut haproxy-ui und lädt es zu GitHub (ghcr.io) und – wenn eingerichtet – zu Docker Hub hoch.
+#   - bei jeder Änderung am Image (nicht nur README/Vorlage/Symbol)
+#   - täglich: nur wenn das offizielle Basis-Image neu ist (neue Version oder Sicherheitsupdate)
+#   - von Hand: Actions › Image › Run workflow (mit "erzwingen" immer)
+# Docker Hub zusätzlich: Repository-Secrets DOCKERHUB_USERNAME und DOCKERHUB_TOKEN anlegen.
+name: Image
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'templates/**', 'icon.svg', 'LICENSE', '.gitignore', '.gitattributes']
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+    inputs:
+      erzwingen:
+        description: 'Immer neu bauen'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+  actions: write   # für keepalive (GitHub pausiert Zeitpläne sonst nach 60 Tagen ohne Commit)
+
+env:
+  NAME: haproxy-ui
+  BASE: docker.io/library/python
+  # Versionslinie des Basis-Images; Wechsel hier eintragen.
+  BASE_TAG: '3.13-alpine'
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: imjasonh/setup-crane@v0.4
+
+      - name: Basis-Image prüfen
+        id: pruefen
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${BASE}:${BASE_TAG}"
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          ZIEL="ghcr.io/${OWNER}/${NAME}"
+          DIGEST="$(crane digest "$BASE")"
+          ALT="$(crane config "$ZIEL:latest" 2>/dev/null | jq -r '.config.Labels["org.opencontainers.image.base.digest"] // ""' || true)"
+          KONFIG="$(crane config "$BASE")"
+          VERSION="1.0.0-py$(jq -r '.config.Env[] | select(startswith("PYTHON_VERSION=")) | sub("PYTHON_VERSION=";"")' <<<"$KONFIG")"
+          VERSION="${VERSION:-$(date -u +%Y.%m.%d)}"; VERSION="${VERSION#v}"
+          BAUEN=false
+          if [ "$DIGEST" != "$ALT" ]; then BAUEN=true; echo "Basis neu: $DIGEST (vorher: ${ALT:-keins})"; fi
+          if [ "${{ github.event_name }}" = push ] || [ "${{ inputs.erzwingen }}" = true ]; then BAUEN=true; fi
+          {
+            echo "bauen=$BAUEN"; echo "digest=$DIGEST"
+            echo "version=$VERSION"; echo "ziel=$ZIEL"; echo "datum=$(date -u +%Y%m%d)"
+          } >> "$GITHUB_OUTPUT"
+          echo "### ${NAME}: Basis $BASE ($VERSION) – bauen: $BAUEN" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Namen der Images
+        if: steps.pruefen.outputs.bauen == 'true'
+        id: namen
+        shell: bash
+        run: |
+          Z="${{ steps.pruefen.outputs.ziel }}"; V="${{ steps.pruefen.outputs.version }}"; D="${{ steps.pruefen.outputs.datum }}"
+          T="$Z:latest,$Z:$V,$Z:$V-$D"
+          if [ -n "${DOCKERHUB_USERNAME}" ]; then
+            H="docker.io/${DOCKERHUB_USERNAME,,}/${NAME}"
+            T="$T,$H:latest,$H:$V,$H:$V-$D"
+          fi
+          echo "tags=$T" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.pruefen.outputs.bauen == 'true'
+
+      - name: Anmelden bei GitHub (ghcr.io)
+        if: steps.pruefen.outputs.bauen == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Anmelden bei Docker Hub
+        if: steps.pruefen.outputs.bauen == 'true' && env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Bauen und hochladen
+        if: steps.pruefen.outputs.bauen == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          pull: true
+          push: true
+          provenance: false
+          tags: ${{ steps.namen.outputs.tags }}
+          build-args: |
+            PY_TAG=${{ env.BASE_TAG }}
+            BASE_DIGEST=${{ steps.pruefen.outputs.digest }}
+            QUELLE=${{ github.server_url }}/${{ github.repository }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.pruefen.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: liskin/gh-workflow-keepalive@v1
