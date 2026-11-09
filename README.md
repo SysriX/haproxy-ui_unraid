@@ -2,7 +2,7 @@
 
 Weboberfläche für [haproxy-unraid](https://github.com/SysriX/haproxy_unraid): HAProxy bequem im Browser konfigurieren, Statistik ansehen und optional an Home Assistant melden.
 
-Teil der Sammlung [unraid-images](https://github.com/SysriX/unraid-images) – Übersicht aller Pakete.
+Weitere Unraid-Pakete: [haproxy-unraid](https://github.com/SysriX/haproxy_unraid), [certwarden-unraid](https://github.com/SysriX/certwarden_unraid)
 
 `ghcr.io/sysrix/haproxy-ui:latest`
 
@@ -25,7 +25,7 @@ Teil der Sammlung [unraid-images](https://github.com/SysriX/unraid-images) – �
 1. `haproxy-unraid` installieren und einmal starten.
 2. Vorlage holen (falls noch nicht geschehen) und in **Apps › Private** `haproxy-ui` installieren:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/SysriX/unraid-images/main/unraid/private-vorlagen.sh | bash
+   mkdir -p /boot/config/plugins/community.applications/private/sysrix && curl -fsSL https://raw.githubusercontent.com/SysriX/haproxy-ui_unraid/main/templates/haproxy-ui.xml -o /boot/config/plugins/community.applications/private/sysrix/haproxy-ui.xml
    ```
 3. Netzwerk `br0` (bzw. VLAN) mit **fester IP**. Diese IP muss in `listen/intern-netze.lst` von HAProxy liegen (Zugriff auf die Statistik).
 4. Aufruf: `http://<IP_haproxy-ui>:8080/`
