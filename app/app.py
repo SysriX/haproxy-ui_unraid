@@ -196,19 +196,32 @@ def bk_laden():
     return bk.laden(lesen(os.path.join(BEARB, BK_REL)))
 
 
-def baukasten_texte(daten, map_text):
+def passwort_hash(pw):
+    """SHA-512-crypt ($6$) über openssl – HAProxy (musl) prüft das mit crypt(3)."""
+    r = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=pw + "\n", capture_output=True, text=True, timeout=10)
+    h = r.stdout.strip()
+    if r.returncode != 0 or not bk.RE_HASH.match(h):
+        raise ValueError("Passwort konnte nicht verschlüsselt werden (openssl fehlt?)")
+    return h
+
+
+def baukasten_texte(daten, map_text, dcfg=None):
     """Berechnet die neuen Dateien (ohne zu schreiben). -> ({rel: text}, hinweise)"""
     zeilen = dienste_lesen(map_text)
     namen = {z["name"] for z in zeilen}
     # Aufräumen: Dienste ohne Zeile in dienste.map, Backends ohne Nutzer
     daten["dienste"] = {n: v for n, v in daten["dienste"].items() if n in namen}
-    benutzt = {z["backend"] for z in zeilen} | {
-        r.get("ziel") for v in daten["dienste"].values() for r in v.get("regeln", []) if r.get("aktion") == "backend"}
+    benutzt = bk.benutzt_von(daten, zeilen)
     daten["backends"] = {n: v for n, v in daten["backends"].items() if n in benutzt}
+    for n, d in daten["dienste"].items():
+        a = d.get("anmeldung") or {}
+        if a.get("art") == "basic" and a.get("liste") not in daten["benutzerlisten"]:
+            raise ValueError(f"{n} nutzt die Benutzerliste „{a.get('liste')}“, die es nicht mehr gibt")
 
     hinweise = []
     cfg_alt = lesen(pfad("haproxy.cfg"))
-    braucht = any(z["zugang"] == "extern" for z in zeilen) or any(v.get("regeln") for v in daten["dienste"].values())
+    braucht = any(z["zugang"] == "extern" for z in zeilen) or any(
+        v.get("regeln") or (v.get("anmeldung") or {}).get("art", "keine") != "keine" for v in daten["dienste"].values())
     try:
         cfg, geaendert = bk.cfg_vorbereiten(cfg_alt)
         hinweise += [f"haproxy.cfg ergänzt: {g}" for g in geaendert]
@@ -219,7 +232,9 @@ def baukasten_texte(daten, map_text):
             raise
         cfg = cfg_alt  # eigene haproxy.cfg ohne Anker – solange nichts davon gebraucht wird, nicht anfassen
 
-    dcfg = lesen(pfad("dienste.cfg"))
+    dcfg = lesen(pfad("dienste.cfg")) if dcfg is None else dcfg
+    if daten["benutzerlisten"] or bk.M_ANF + "benutzer" in dcfg:
+        dcfg = bk.block_ersetzen(dcfg, "benutzer", bk.benutzer_erzeugen(daten), anhaengen=True)
     if daten["backends"] or bk.M_ANF + "backends" in dcfg:
         dcfg = bk.block_ersetzen(dcfg, "backends", bk.backends_erzeugen(daten, zeilen), anhaengen=True)
     return {MAP_REL: map_text, "haproxy.cfg": cfg, "dienste.cfg": dcfg}, hinweise
@@ -230,8 +245,8 @@ def _norm(text):
     return text if text.endswith("\n") else text + "\n"
 
 
-def baukasten_anwenden(daten, map_text):
-    texte, hinweise = baukasten_texte(daten, map_text)
+def baukasten_anwenden(daten, map_text, dcfg=None):
+    texte, hinweise = baukasten_texte(daten, map_text, dcfg)
     for rel, text in texte.items():
         if _norm(text) != lesen(pfad(rel)):
             schreiben(pfad(rel), text)
@@ -248,17 +263,38 @@ def zert_deckt(name, zerts):
     return None
 
 
+def von_hand_backends():
+    """Backends, die von Hand in dienste.cfg stehen (außerhalb der Assistenten-Blöcke)."""
+    text = lesen(pfad("dienste.cfg"))
+    out = []
+    for z in text.splitlines():
+        m = re.match(r"^backend\s+(\S+)", z)
+        if m and bk.backend_finden(text, m.group(1)):
+            out.append(m.group(1))
+    return out
+
+
+def listen_fuer_ui(daten):
+    return {n: {"benutzer": [{"name": u["name"], "gesetzt": True} for u in l.get("benutzer", [])]}
+            for n, l in sorted(daten["benutzerlisten"].items())}
+
+
 def bk_uebersicht():
     daten = bk_laden()
     bm = backends_modus()
     zeilen = dienste_lesen()
     for z in zeilen:
-        z["regeln"] = len(daten["dienste"].get(z["name"], {}).get("regeln", []))
-        z["verwaltet"] = z["backend"] in daten["backends"]
+        d = daten["dienste"].get(z["name"], {})
+        z["regeln"] = len(d.get("regeln", []))
+        z["anmeldung"] = bk.anmeldung_text(d.get("anmeldung")) if d.get("anmeldung") else "keine"
+        z["ziel"] = d.get("ziel") or z["backend"]
+        z["verwaltet"] = z["ziel"] in daten["backends"]
+    hand = von_hand_backends()
     listen = sorted(r for r in dateiliste() if r.startswith("listen/") and r.endswith(".lst"))
     return {"dienste": zeilen, "listen": listen, "cfg_bereit": bk.cfg_bereit(lesen(pfad("haproxy.cfg"))),
-            "backends": [{"name": n, "mode": m, "verwaltet": n in daten["backends"]} for n, m in sorted(bm.items())
-                         if not n.startswith("st_") and n not in INTERN_BE]}
+            "von_hand": hand, "benutzerlisten": listen_fuer_ui(daten),
+            "backends": [{"name": n, "mode": m, "verwaltet": n in daten["backends"], "von_hand": n in hand}
+                         for n, m in sorted(bm.items()) if not n.startswith("st_") and n not in INTERN_BE]}
 
 
 def bk_eintrag(name):
@@ -266,20 +302,33 @@ def bk_eintrag(name):
     z = next((x for x in dienste_lesen() if x["name"] == name), None)
     if not z:
         raise ValueError("Adresse nicht gefunden")
-    be = daten["backends"].get(z["backend"])
+    d = daten["dienste"].get(name, {})
+    ziel = d.get("ziel") or z["backend"]
+    be = daten["backends"].get(ziel)
     return {"name": name, "zugang": z["zugang"], "modus": z["modus"], "notiz": z["notiz"],
-            "backend": z["backend"], "backend_neu": bool(be), "backend_def": be,
-            "regeln": daten["dienste"].get(name, {}).get("regeln", [])}
+            "backend": ziel, "backend_neu": bool(be), "backend_def": be,
+            "anmeldung": d.get("anmeldung") or {"art": "keine"}, "regeln": d.get("regeln", [])}
 
 
-def bk_planen(e, alt_name=None):
+def bk_planen(e, alt_name=None, listen_ein=None, hashen=True):
     daten = bk_laden()
-    x = bk.eintrag_pruefen(e, backends_modus(), set(daten["backends"]))
+    if listen_ein is not None:
+        listen = bk.benutzerlisten_pruefen(listen_ein, daten["benutzerlisten"])
+        for l in listen.values():
+            for u in l["benutzer"]:
+                if "passwort" in u:
+                    u["hash"] = passwort_hash(u.pop("passwort")) if hashen else "$6$(neu)$…"
+        daten["benutzerlisten"] = listen
+    x = bk.eintrag_pruefen(e, backends_modus(), set(daten["backends"]), set(daten["benutzerlisten"]))
     alle = dienste_lesen()
     alt_name = (alt_name or "").strip().lower() or None
     if any(z["name"] == x["name"] for z in alle) and x["name"] != alt_name:
         raise ValueError(f"{x['name']} gibt es schon – in der Liste auf „Bearbeiten“ gehen")
-    zeile = {"name": x["name"], "backend": x["backend"], "zugang": x["zugang"], "modus": x["modus"], "notiz": x["notiz"]}
+    dienst = {"regeln": x["regeln"], "anmeldung": x["anmeldung"]}
+    if x["anmeldung"]["art"] in ("authentik", "basic_authentik"):
+        dienst["ziel"] = x["backend"]
+    zeile = {"name": x["name"], "backend": bk.map_backend(dienst, x["backend"]), "zugang": x["zugang"],
+             "modus": x["modus"], "notiz": x["notiz"]}
     pos = next((i for i, z in enumerate(alle) if z["name"] == alt_name), None)
     zeilen = [z for z in alle if z["name"] != alt_name]
     if pos is None:
@@ -288,20 +337,24 @@ def bk_planen(e, alt_name=None):
         zeilen.insert(pos, zeile)
         if alt_name != x["name"]:
             daten["dienste"].pop(alt_name, None)
-    daten["dienste"][x["name"]] = {"regeln": x["regeln"]}
+    daten["dienste"][x["name"]] = dienst
     if x.get("backend_def"):
         daten["backends"][x["backend"]] = x["backend_def"]
     return x, daten, map_schreiben(zeilen)
 
 
-def bk_vorschau(e, alt_name=None):
-    x, daten, map_text = bk_planen(e, alt_name)
+def bk_vorschau(e, alt_name=None, listen_ein=None):
+    x, daten, map_text = bk_planen(e, alt_name, listen_ein, hashen=False)
     texte, hinweise = baukasten_texte(daten, map_text)
     eigene = [z for z in dienste_lesen(map_text) if z["name"] == x["name"]]
     regeln = bk.regeln_erzeugen({"dienste": {x["name"]: daten["dienste"][x["name"]]}, "backends": {}}, eigene)
     regel_text = "\n\n".join(f"# in haproxy.cfg, Block {m}:\n" + "\n".join(v) for m, v in regeln.items() if v)
     backend_text = bk.backend_erzeugen(x["backend"], daten["backends"][x["backend"]]) \
         if x["backend"] in daten["backends"] else f"# vorhandenes Backend {x['backend']} (bleibt unverändert)"
+    a = x["anmeldung"]
+    if a["art"] == "basic":
+        backend_text += "\n\n" + "\n".join(z for z in bk.benutzer_erzeugen(daten).split("\n\n")
+                                           if z.startswith(f"userlist ul_{a['liste']}\n") or z == f"userlist ul_{a['liste']}")
     if x["modus"] == "tls":
         d = zert_deckt(x["name"], zertifikate())
         hinweise.append(f"Zertifikat vorhanden: certs/{d}" if d else
@@ -313,25 +366,58 @@ def bk_vorschau(e, alt_name=None):
         hinweise.append(f"Öffentlicher DNS: {x['name']} → eure WAN-Adresse (Firewall leitet 80/443 an HAProxy)")
     if x["zugang"] == "extern":
         hinweise.append("Von innen wird abgelehnt (Grund „nur_extern“)")
+    if a["art"] in ("authentik", "basic_authentik"):
+        ziele = ", ".join(("https://" if s["https"] else "http://") + s["adresse"] + ":" + str(s["port"])
+                          for s in (daten["backends"].get(x["backend"]) or {}).get("server", [])) or x["backend"]
+        hinweise.append(f"In Authentik: Anwendung + Proxy-Anbieter (Modus Proxy) mit externer Adresse https://{x['name']} "
+                        f"und interner Adresse {ziele}; dem eingebetteten Outpost zuweisen")
+    if a["art"] == "basic_authentik":
+        hinweise.append("In Authentik beim Proxy-Anbieter „Intercept header authentication“ einschalten – Benutzer melden "
+                        "sich dann mit Authentik-/LDAP-Benutzer und Passwort (bzw. App-Passwort) an")
+    if a["art"] == "basic":
+        hinweise.append("Benutzer stehen nur in HAProxy (Passwörter als SHA-512-Hash in dienste.cfg)")
     diff = []
     for rel, text in texte.items():
-        a = lesen(pfad(rel)).splitlines(keepends=True)
-        b = _norm(text).splitlines(keepends=True)
-        if a != b:
-            diff.append("".join(difflib.unified_diff(a, b, "bearbeiten/" + rel, "neu/" + rel)))
+        alt = lesen(pfad(rel)).splitlines(keepends=True)
+        neu = _norm(text).splitlines(keepends=True)
+        if alt != neu:
+            diff.append("".join(difflib.unified_diff(alt, neu, "bearbeiten/" + rel, "neu/" + rel)))
     return {"map_zeile": next((l for l in map_text.splitlines() if l.split()[:1] == [x["name"]]), ""),
             "backend": backend_text, "regeln": regel_text or "# keine Regeln", "hinweise": hinweise,
             "diff": "\n".join(diff)}
 
 
-def bk_speichern(e, alt_name=None):
-    _, daten, map_text = bk_planen(e, alt_name)
+def bk_speichern(e, alt_name=None, listen_ein=None):
+    _, daten, map_text = bk_planen(e, alt_name, listen_ein)
     return baukasten_anwenden(daten, map_text)
 
 
 def bk_loeschen(name):
     zeilen = [z for z in dienste_lesen() if z["name"] != name]
     return baukasten_anwenden(bk_laden(), map_schreiben(zeilen))
+
+
+def bk_importieren(be):
+    """Von Hand geschriebenes Backend aus dienste.cfg in den Assistenten übernehmen."""
+    daten = bk_laden()
+    if be in daten["backends"]:
+        raise ValueError(f"{be} wird schon vom Assistenten verwaltet")
+    zeilen = dienste_lesen()
+    nutzer = [z["name"] for z in zeilen if z["backend"] == be] + [
+        n for n, d in daten["dienste"].items() if d.get("ziel") == be]
+    if not nutzer:
+        raise ValueError(f"{be} wird von keiner Adresse benutzt – erst eine Adresse darauf zeigen lassen")
+    roh, rest = bk.backend_importieren(lesen(pfad("dienste.cfg")), be)
+    daten["backends"][be] = bk.backend_pruefen(be, roh, roh["modus"])
+    for z in zeilen:
+        if z["backend"] == be:
+            want = "tls" if roh["modus"] == "tls" else "durch"
+            if z["modus"] != want:
+                raise ValueError(f"{z['name']} hat Modus {z['modus']}, das Backend passt zu {want}")
+    hinweise = baukasten_anwenden(daten, lesen(pfad(MAP_REL)), dcfg=rest)
+    return {"hinweise": hinweise, "nutzer": nutzer,
+            "eigene": daten["backends"][be].get("eigene", ""),
+            "server_optionen": [s["optionen"] for s in daten["backends"][be]["server"] if s.get("optionen")]}
 
 
 # ------------------------------------------------------------------ Aufträge an den HAProxy-Container
@@ -684,13 +770,19 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/auftrag":
                 return self.antwort(200, {"id": auftrag_stellen(str(d.get("aktion", "")))})
             if u.path == "/api/baukasten/vorschau":
-                return self.antwort(200, bk_vorschau(d.get("eintrag") or {}, d.get("alt_name")))
+                return self.antwort(200, bk_vorschau(d.get("eintrag") or {}, d.get("alt_name"), d.get("benutzerlisten")))
             if u.path == "/api/baukasten/speichern":
-                return self.antwort(200, {"ok": True, "hinweise": bk_speichern(d.get("eintrag") or {}, d.get("alt_name"))})
+                return self.antwort(200, {"ok": True, "hinweise": bk_speichern(d.get("eintrag") or {}, d.get("alt_name"),
+                                                                                 d.get("benutzerlisten"))})
+            if u.path == "/api/baukasten/importieren":
+                return self.antwort(200, dict(ok=True, **bk_importieren(str(d.get("backend", "")))))
             if u.path == "/api/baukasten/loeschen":
                 return self.antwort(200, {"ok": True, "hinweise": bk_loeschen(str(d.get("name", "")))})
         except ValueError as e:
             return self.antwort(400, {"fehler": str(e)})
+        except Exception as e:  # noqa: BLE001
+            log("Fehler:", repr(e))
+            return self.antwort(500, {"fehler": f"interner Fehler: {e}"})
         self.antwort(404, {"fehler": "unbekannt"})
 
 

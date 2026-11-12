@@ -272,10 +272,11 @@ async function zustandLaden() {
     ['Zertifikate < 14 Tage', bald, bald ? 'warn' : 'ok', z.zertifikate.length + ' in certs/'],
     ['Home Assistant', z.mqtt.aktiv ? (z.mqtt.verbunden ? 'MQTT verbunden' : 'MQTT getrennt') : 'aus', z.mqtt.aktiv ? (z.mqtt.verbunden ? 'ok' : 'bad') : '', z.mqtt.fehler || ''],
   ].map(([l, w, k, t]) => `<div class="kachel ${k}" title="${esc(t)}"><div class="l">${k?'<span class="punkt"></span>':''}${esc(l)}</div><div class="w">${esc(w)}</div><div class="l">${esc(t)}</div></div>`).join('');
-  $('#t-fe').innerHTML = '<tr><th>Name</th><th>Status</th><th class="z">Sitzungen</th><th class="z">max</th><th class="z">gesamt</th><th class="z">Rate</th><th class="z">abgelehnt</th><th class="z">ein</th><th class="z">aus</th></tr>' +
-    fe.map(r => `<tr><td>${esc(r.proxy)}</td><td class="${statusKlasse(r.status)}"><span class="punkt"></span>${esc(r.status)}</td><td class="z">${r.scur}</td><td class="z">${r.smax}</td><td class="z">${r.stot}</td><td class="z">${r.rate}</td><td class="z">${r.ereq}</td><td class="z">${groesse(r.bin)}</td><td class="z">${groesse(r.bout)}</td></tr>`).join('');
-  $('#t-be').innerHTML = '<tr><th>Backend</th><th>Server</th><th>Status</th><th>Prüfung</th><th class="z">Sitzungen</th><th class="z">gesamt</th><th class="z">5xx</th><th class="z">Verb.-Fehler</th><th class="z">seit</th></tr>' +
-    be.map(r => `<tr><td>${r.typ==='backend'?'<b>'+esc(r.proxy)+'</b>':'<span class="leise">'+esc(r.proxy)+'</span>'}</td><td>${r.typ==='backend'?'<span class="leise">gesamt</span>':esc(r.name)}</td><td class="${statusKlasse(r.status)}"><span class="punkt"></span>${esc(r.status)}</td><td class="leise">${esc(r.check)}</td><td class="z">${r.scur}</td><td class="z">${r.stot}</td><td class="z">${r.hrsp_5xx}</td><td class="z">${r.econ}</td><td class="z">${dauer(r.lastchg)}</td></tr>`).join('');
+  const knopf = (n, t) => `<button class="k" style="padding:2px 9px;font-size:12.5px" title="${t==='frontend'?'in haproxy.cfg ansehen/ändern':'bearbeiten (Assistent oder Editor)'}" onclick="oeffneProxy('${esc(n)}','${t}')">${t==='frontend'?'Ansehen':'Bearbeiten'}</button>`;
+  $('#t-fe').innerHTML = '<tr><th>Name</th><th>Status</th><th class="z">Sitzungen</th><th class="z">max</th><th class="z">gesamt</th><th class="z">Rate</th><th class="z">abgelehnt</th><th class="z">ein</th><th class="z">aus</th><th></th></tr>' +
+    fe.map(r => `<tr><td>${esc(r.proxy)}</td><td class="${statusKlasse(r.status)}"><span class="punkt"></span>${esc(r.status)}</td><td class="z">${r.scur}</td><td class="z">${r.smax}</td><td class="z">${r.stot}</td><td class="z">${r.rate}</td><td class="z">${r.ereq}</td><td class="z">${groesse(r.bin)}</td><td class="z">${groesse(r.bout)}</td><td class="z">${knopf(r.proxy, 'frontend')}</td></tr>`).join('');
+  $('#t-be').innerHTML = '<tr><th>Backend</th><th>Server</th><th>Status</th><th>Prüfung</th><th class="z">Sitzungen</th><th class="z">gesamt</th><th class="z">5xx</th><th class="z">Verb.-Fehler</th><th class="z">seit</th><th></th></tr>' +
+    be.map(r => `<tr><td>${r.typ==='backend'?'<b>'+esc(r.proxy)+'</b>':'<span class="leise">'+esc(r.proxy)+'</span>'}</td><td>${r.typ==='backend'?'<span class="leise">gesamt</span>':esc(r.name)}</td><td class="${statusKlasse(r.status)}"><span class="punkt"></span>${esc(r.status)}</td><td class="leise">${esc(r.check)}</td><td class="z">${r.scur}</td><td class="z">${r.stot}</td><td class="z">${r.hrsp_5xx}</td><td class="z">${r.econ}</td><td class="z">${dauer(r.lastchg)}</td><td class="z">${r.typ==='backend' && !/^st_/.test(r.proxy) ? knopf(r.proxy, 'backend') : ''}</td></tr>`).join('');
   $('#t-zert').innerHTML = '<tr><th>Datei</th><th>Name (CN)</th><th>weitere Namen</th><th>gültig bis</th><th class="z">Tage</th></tr>' +
     z.zertifikate.map(c => { const k = c.tage == null ? 'bad' : c.tage < 7 ? 'bad' : c.tage < 21 ? 'warn' : 'ok';
       return `<tr><td>${esc(c.datei)}</td><td>${esc(c.cn||c.fehler)}</td><td class="leise">${esc((c.namen||[]).join(', '))}</td><td>${c.ende?new Date(c.ende).toLocaleString('de-DE'):'–'}</td><td class="z ${k}"><span class="punkt"></span>${c.tage ?? '–'}</td></tr>`; }).join('');
@@ -325,14 +326,41 @@ async function diensteLaden() {
 }
 function zeichneDienste() {
   const sel = (feld, i, werte, namen) => `<select onchange="dienste[${i}].${feld}=this.value">${werte.map(w => `<option value="${w}" ${dienste[i][feld]===w?'selected':''}>${esc((namen||{})[w]||w)}</option>`).join('')}</select>`;
-  $('#t-dienste').innerHTML = '<tr><th>Adresse</th><th>Backend</th><th>Zugang</th><th>Modus</th><th class="z">Regeln</th><th>Notiz</th><th></th></tr>' +
-    (dienste.length ? '' : '<tr><td colspan="7" class="leise">Noch keine Adressen – „Neue Adresse (Assistent)“.</td></tr>') +
+  $('#t-dienste').innerHTML = '<tr><th>Adresse</th><th>Backend</th><th>Zugang</th><th>Modus</th><th>Anmeldung</th><th class="z">Regeln</th><th>Notiz</th><th></th></tr>' +
+    (dienste.length ? '' : '<tr><td colspan="8" class="leise">Noch keine Adressen – „Neue Adresse (Assistent)“.</td></tr>') +
     dienste.map((d, i) => `<tr><td><input value="${esc(d.name)}" oninput="dienste[${i}].name=this.value" placeholder="dienst.example.de"></td>
       <td><input list="be-liste" value="${esc(d.backend)}" oninput="dienste[${i}].backend=this.value" title="${d.verwaltet?'vom Assistenten angelegt':''}"></td>
       <td>${sel('zugang', i, ['intern','extern','alle'], ZUGANG)}</td><td>${sel('modus', i, ['tls','durch'])}</td>
+      <td class="leise" style="font-size:12.5px">${esc(d.anmeldung && d.anmeldung !== 'keine' ? d.anmeldung : '–')}</td>
       <td class="z">${d.regeln ? `<span class="marke">${d.regeln}</span>` : '<span class="leise">–</span>'}</td>
       <td><input value="${esc(d.notiz)}" oninput="dienste[${i}].notiz=this.value"></td>
-      <td style="white-space:nowrap">${d.name && !d.neu ? `<button class="k" onclick="assistentOeffnen('${esc(d.name)}')">Bearbeiten</button> ` : ''}<button class="k gefahr" title="entfernen" onclick="dienste.splice(${i},1);zeichneDienste()">✕</button></td></tr>`).join('');
+      <td style="white-space:nowrap">${d.name && !d.neu ? `<button class="k" onclick="assistentOeffnen('${esc(d.name)}')">Bearbeiten</button> ` : ''}${!d.neu && !d.verwaltet && (bkInfo.von_hand || []).includes(d.ziel || d.backend) ? `<button class="k" title="Backend ${esc(d.ziel || d.backend)} von Hand geschrieben – in den Assistenten übernehmen, damit es hier bearbeitet werden kann" onclick="importieren('${esc(d.ziel || d.backend)}','${esc(d.name)}')">Übernehmen</button> ` : ''}<button class="k gefahr" title="entfernen" onclick="dienste.splice(${i},1);zeichneDienste()">✕</button></td></tr>`).join('');
+}
+async function importieren(be, name) {
+  if (!confirm(`Backend ${be} aus dienste.cfg in den Assistenten übernehmen?\n\nDer Abschnitt wird in den Assistenten-Block verschoben. Was es nicht als Schalter gibt, landet unter „Eigene Zeilen“ – es geht nichts verloren. Ansehen/Zurück unter „Änderungen“.`)) return;
+  try {
+    const j = await api('/api/baukasten/importieren', {backend: be});
+    hinweis(`${be} übernommen${j.eigene ? ' – einige Zeilen stehen unter „Eigene Zeilen“' : ''}`);
+    await diensteLaden(); zustandLaden();
+    if (name) assistentOeffnen(name);
+  } catch (e) { hinweis(e.message, 'bad'); }
+}
+// Aus der Übersicht: Backend/Frontend zum Bearbeiten öffnen
+async function oeffneProxy(name, typ) {
+  try { bkInfo = await api('/api/baukasten'); } catch (e) { return hinweis(e.message, 'bad'); }
+  if (typ === 'frontend') return dateiZeigen('haproxy.cfg', 'frontend ' + name);
+  const d = bkInfo.dienste.find(x => (x.ziel || x.backend) === name) || bkInfo.dienste.find(x => x.backend === name);
+  if (d && d.verwaltet) return assistentOeffnen(d.name);
+  if ((bkInfo.von_hand || []).includes(name)) {
+    if (d && confirm(`${name} ist von Hand geschrieben.\n\nOK = in den Assistenten übernehmen und dort bearbeiten\nAbbrechen = im Editor öffnen`)) return importieren(name, d.name);
+    return dateiZeigen('dienste.cfg', 'backend ' + name);
+  }
+  return dateiZeigen('haproxy.cfg', 'backend ' + name);
+}
+async function dateiZeigen(p, suche) {
+  aktDatei = p; wechsel('dateien'); await dateiOeffnen(p);
+  const ed = $('#editor'), i = ed.value.search(new RegExp('^' + suche.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'm'));
+  if (i >= 0) { ed.focus(); ed.setSelectionRange(i, i + suche.length); ed.scrollTop = Math.max(0, ed.value.slice(0, i).split('\n').length - 4) * 19.5; }
 }
 function dienstNeu() { dienste.push({name:'', backend:'', zugang:'intern', modus:'tls', notiz:'', neu:true}); zeichneDienste(); }
 async function diensteSpeichern() {
@@ -350,27 +378,34 @@ const VORLAGEN = {
   jellyfin:    {t: 'Jellyfin', b: 'Medien, Apps/TV direkt', modus: 'tls', port: 8096, check: '/health', lange: true,
     hinweis: 'In Jellyfin: Netzwerk › Bekannte Proxys: IP von HAProxy. Kein Authentik davor, sonst gehen Apps/TV nicht.'},
   authentik:   {t: 'Authentik', b: 'Anmeldung (SSO), Port 9000', modus: 'tls', port: 9000, check: '/-/health/live/', lange: true,
-    hinweis: 'Seiten, die Authentik schützen soll, bekommen als Backend das vorhandene Authentik-Backend (Schritt 2: „Vorhandenes Backend“).'},
+    hinweis: 'Das ist die Adresse von Authentik selbst. Andere Seiten schützt du danach im Schritt „Anmeldung“ mit „Authentik“.'},
   unraid:      {t: 'Oberfläche nur mit https', b: 'z. B. Unraid, Proxmox, Router', modus: 'tls', port: 443, https: true, lange: true},
   vaultwarden: {t: 'Vaultwarden', b: 'Passwort-Tresor', modus: 'tls', port: 80, check: '/alive', lange: true},
   durch:       {t: 'Verschlüsselt durchreichen', b: 'Ziel hat eigenes Zertifikat (z. B. Mail, grommunio)', modus: 'durch', port: 443, lange: true},
 };
-const SCHRITTE = [['Adresse', 'Name und Zugang'], ['Ziel', 'Backend und Optionen'], ['Regeln', 'Bedingungen → Aktion'], ['Prüfen', 'Vorschau und Speichern']];
+const SCHRITTE = [['Adresse', 'Name und Zugang'], ['Ziel', 'Backend und Optionen'], ['Anmeldung', 'Basic oder Authentik'], ['Regeln', 'Bedingungen → Aktion'], ['Prüfen', 'Vorschau und Speichern']];
+const LETZTER = SCHRITTE.length - 1;
 let A = null;
 
-function leeresBackend(port, https) { return {server: [{adresse: '', port: port || 80, https: !!https, pruefen: true, reserve: false}], verteilung: 'roundrobin',
-  check_pfad: '', check_status: '', lange_verbindungen: false, forwarded_port: false, host_header: '', sticky: false, timeout_server: '', notiz: '', vorlage: ''}; }
+function leeresBackend(port, https) { return {server: [{adresse: '', port: port || 80, https: !!https, pruefen: true, reserve: false, gewicht: '', optionen: ''}], verteilung: 'roundrobin',
+  check_pfad: '', check_status: '', lange_verbindungen: false, forwarded_port: false, host_header: '', sticky: false, timeout_server: '', notiz: '', vorlage: '',
+  forwarded: false, client_ip_header: '', proxy_protokoll: false, kompression: false, sicherheits_header: false, praefix_entfernen: '', redispatch: false,
+  pruef_intervall: '', max_verbindungen: '', ziel_zert_pruefen: false, sni: false, header: [], eigene: ''}; }
+const leereAnmeldung = () => ({art: 'keine', liste: '', realm: 'Anmeldung', intern_frei: false, ausnahmen: '', header_entfernen: true, authentik_backend: ''});
 
 async function assistentOeffnen(name) {
   try { bkInfo = await api('/api/baukasten'); } catch (e) { return hinweis(e.message, 'bad'); }
   A = {s: 0, max: 0, alt: null, vorlage: 'generisch', e: {name: '', zugang: 'intern', modus: 'tls', notiz: '', backend: '', backend_neu: true, backend_auto: true,
-       backend_def: leeresBackend(80), regeln: []}, vorschau: null};
+       backend_def: leeresBackend(80), anmeldung: leereAnmeldung(), regeln: []}, vorschau: null,
+       listen: JSON.parse(JSON.stringify(bkInfo.benutzerlisten || {}))};
   if (name) {
     try {
       const e = await api('/api/baukasten/eintrag?name=' + encodeURIComponent(name));
-      A.alt = name; A.max = 3; A.vorlage = '';
+      A.alt = name; A.max = LETZTER; A.vorlage = '';
       A.e = Object.assign(A.e, e, {backend_auto: false});
-      if (!e.backend_def) A.e.backend_def = leeresBackend(80);
+      A.e.backend_def = Object.assign(leeresBackend(80), e.backend_def || {});
+      A.e.backend_def.server = A.e.backend_def.server.map(s => Object.assign({gewicht: '', optionen: ''}, s, {gewicht: s.gewicht ?? ''}));
+      A.e.anmeldung = Object.assign(leereAnmeldung(), e.anmeldung || {});
     } catch (err) { return hinweis(err.message, 'bad'); }
   }
   $('#as-titel').textContent = name ? 'Adresse bearbeiten: ' + name : 'Neue Adresse';
@@ -410,15 +445,21 @@ function pruefeSchritt(s) {
     if (!e.backend) return 'Backend-Name fehlt';
     if (e.backend_neu && !e.backend_def.server.some(x => x.adresse.trim())) return 'Mindestens einen Server mit Adresse angeben';
   }
+  if (s === 2) {
+    const a = e.anmeldung;
+    if (a.art === 'basic' && !a.liste) return 'Benutzerliste wählen oder anlegen';
+    if (a.art === 'basic' && !(A.listen[a.liste]?.benutzer || []).length) return 'Die Benutzerliste braucht mindestens einen Benutzer';
+    if ((a.art === 'authentik' || a.art === 'basic_authentik') && !a.authentik_backend) return 'Authentik-Backend wählen';
+  }
   return null;
 }
 
 async function schritt(n) {
-  if (n < 0 || n > 3) return;
+  if (n < 0 || n > LETZTER) return;
   if (n > A.s) { for (let s = A.s; s < n; s++) { const f = pruefeSchritt(s); if (f) { zeigeFehler(f); return; } } }
   zeigeFehler('');
   A.s = n; A.max = Math.max(A.max, n);
-  if (n === 3) { A.vorschau = null; zeichneSchritt(); await vorschauLaden(); return; }
+  if (n === LETZTER) { A.vorschau = null; zeichneSchritt(); await vorschauLaden(); return; }
   zeichneSchritt();
 }
 function zeigeFehler(t) { $('#as-fehler').innerHTML = t ? `<div class="fehlerbox">${esc(t)}</div>` : ''; }
@@ -426,10 +467,12 @@ function zeigeFehler(t) { $('#as-fehler').innerHTML = t ? `<div class="fehlerbox
 function zeichneSchritt() {
   $('#as-schritte').innerHTML = SCHRITTE.map(([t, b], i) => `<button class="${i===A.s?'an':''} ${i<A.max||(i<A.s)?'fertig':''}" onclick="schritt(${i})"><b>${i+1}. ${t}</b>${b}</button>`).join('');
   $('#as-zurueck').disabled = A.s === 0;
-  $('#as-weiter').classList.toggle('versteckt', A.s === 3);
-  $('#as-speichern').classList.toggle('versteckt', A.s !== 3);
-  $('#as-uebernehmen').classList.toggle('versteckt', A.s !== 3);
-  $('#as-inhalt').innerHTML = [s1, s2, s3, s4][A.s]();
+  $('#as-weiter').classList.toggle('versteckt', A.s === LETZTER);
+  $('#as-speichern').classList.toggle('versteckt', A.s !== LETZTER);
+  $('#as-uebernehmen').classList.toggle('versteckt', A.s !== LETZTER);
+  const offen = [...document.querySelectorAll('#as-inhalt details[data-k]')].filter(d => d.open).map(d => d.dataset.k);
+  $('#as-inhalt').innerHTML = [s1, s2, sAnmeldung, s3, s4][A.s]();
+  offen.forEach(k => { const d = document.querySelector(`#as-inhalt details[data-k="${k}"]`); if (d) d.open = true; });
 }
 
 const radio = (gruppe, wert, aktuell, titel, text, aktion) => `<label><input type="radio" name="${gruppe}" ${wert===aktuell?'checked':''} onchange="${aktion}"><span class="t">${titel}</span><div class="b">${text}</div></label>`;
@@ -467,7 +510,7 @@ function s2() {
   if (v?.hinweis) h += `<div class="hinweisbox">${v.hinweis}</div>`;
   if (!e.backend_neu) {
     return h + `<label class="feld"><span>Backend</span><select onchange="A.e.backend=this.value"><option value="">– wählen –</option>${passend.map(x => `<option ${x.name===e.backend?'selected':''} value="${esc(x.name)}">${esc(x.name)}${x.verwaltet?' (Assistent)':''}</option>`).join('')}</select></label>
-      <p class="leise">Mehrere Adressen dürfen dasselbe Backend nutzen – z. B. alle von Authentik geschützten Seiten das Authentik-Backend.</p>`;
+      <p class="leise">Mehrere Adressen dürfen dasselbe Backend nutzen. Für eine Anmeldung über Authentik hier das eigentliche Ziel wählen – Authentik kommt im nächsten Schritt.</p>`;
   }
   h += `<div class="reihe"><label class="feld"><span>Name des Backends</span><input id="as-be-name" value="${esc(e.backend)}" oninput="A.e.backend=this.value.trim();A.e.backend_auto=false" placeholder="be_dienst"></label></div>
     <div class="feld"><span>Server (Ziel im Netz)</span>
@@ -492,8 +535,95 @@ function s2() {
     if (b.server.length > 1) h += haken('sticky', 'Besucher bleibt beim selben Server', 'per Cookie – für Anwendungen mit Sitzung auf dem Server.');
     h += `<label class="feld"><span>Host-Header ans Ziel ändern (leer = Adresse wie aufgerufen)</span><input value="${esc(b.host_header)}" placeholder="z. B. intern.lan" oninput="A.e.backend_def.host_header=this.value.trim()"></label>`;
   }
-  h += `<label class="feld"><span>Notiz zum Backend (optional)</span><input value="${esc(b.notiz)}" oninput="A.e.backend_def.notiz=this.value"></label>`;
+  // --- Client-IP & Header
+  const tf = (feld, ph, titel, breite) => `<label class="feld" ${breite?`style="flex:${breite}"`:''}><span>${titel}</span><input value="${esc(b[feld] ?? '')}" placeholder="${ph}" oninput="A.e.backend_def.${feld}=this.value.trim()"></label>`;
+  h += `<details data-k="ip"><summary><b>Client-IP und Header</b> – was das Ziel über den Besucher erfährt</summary>`;
+  if (tls) {
+    h += `<div class="hinweisbox">Immer gesetzt (für alle Dienste): <code>X-Forwarded-For</code>, <code>X-Real-IP</code>, <code>X-Forwarded-Proto: https</code>, <code>X-Forwarded-Host</code>.</div>`;
+    h += haken('forwarded', 'Header „Forwarded“ (RFC 7239)', 'neuerer Standard-Header mit IP, Protokoll und Host – für Anwendungen, die ihn statt X-Forwarded-* lesen.');
+    h += `<div class="reihe">${tf('client_ip_header', 'z. B. CF-Connecting-IP oder True-Client-IP', 'Client-IP zusätzlich in eigenem Header')}</div>`;
+  }
+  h += haken('proxy_protokoll', 'PROXY-Protokoll an das Ziel (send-proxy-v2)', tls ? 'nur wenn das Ziel es ausdrücklich erwartet – sonst versteht es die Verbindung nicht.' : 'beim Durchreichen der einzige Weg, die echte Client-IP mitzugeben (z. B. Mailserver, grommunio, nginx mit proxy_protocol). Das Ziel muss es erwarten.');
+  if (tls) {
+    h += `<div class="feld"><span>Header (fest, für alle Anfragen an dieses Backend)</span>
+      ${(b.header || []).map((x, i) => `<div class="reihe" style="margin-bottom:6px">
+        <select onchange="A.e.backend_def.header[${i}].richtung=this.value"><option value="anfrage" ${x.richtung==='anfrage'?'selected':''}>an das Ziel</option><option value="antwort" ${x.richtung==='antwort'?'selected':''}>an den Besucher</option></select>
+        <select onchange="A.e.backend_def.header[${i}].art=this.value;zeichneSchritt()"><option value="setzen" ${x.art==='setzen'?'selected':''}>setzen</option><option value="hinzufuegen" ${x.art==='hinzufuegen'?'selected':''}>hinzufügen</option><option value="entfernen" ${x.art==='entfernen'?'selected':''}>entfernen</option></select>
+        <input value="${esc(x.name)}" placeholder="Header-Name" oninput="A.e.backend_def.header[${i}].name=this.value.trim()">
+        ${x.art !== 'entfernen' ? `<input style="flex:1;min-width:160px" value="${esc(x.wert)}" placeholder="Wert (auch %[src] o. ä.)" oninput="A.e.backend_def.header[${i}].wert=this.value">` : ''}
+        <button class="k gefahr" onclick="A.e.backend_def.header.splice(${i},1);zeichneSchritt()">✕</button></div>`).join('')}
+      <div><button class="k" onclick="(A.e.backend_def.header=A.e.backend_def.header||[]).push({richtung:'anfrage',art:'setzen',name:'',wert:''});zeichneSchritt()">+ Header</button></div></div>`;
+    h += haken('sicherheits_header', 'Sicherheits-Header an den Besucher', 'HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy – nur wenn die Anwendung sie nicht selbst setzt.');
+  }
+  h += `</details>`;
+  // --- Erweitert
+  h += `<details data-k="mehr"><summary><b>Erweitert</b> – Pfade, Ausfall, Leistung, eigene Zeilen</summary>`;
+  if (tls) {
+    h += `<div class="reihe">${tf('praefix_entfernen', '/app', 'Pfad-Präfix vor dem Ziel entfernen (/app/x → /x)')}</div>`;
+    h += haken('kompression', 'Komprimieren (gzip)', 'Text, HTML, CSS, JavaScript, JSON – spart Datenmenge, besonders von außen.');
+    if (b.server.some(s => s.https)) {
+      h += haken('ziel_zert_pruefen', 'Zertifikat des Ziels prüfen', 'nur für Ziele mit gültigem, öffentlichem Zertifikat – sonst „DOWN“.');
+      h += haken('sni', 'Adresse als SNI an das Ziel', 'wenn das Ziel mehrere Seiten auf einer IP hat.');
+    }
+  }
+  if (b.server.length > 1) h += haken('redispatch', 'Bei Fehler anderen Server versuchen', 'bis zu 3 Versuche, Wechsel auf einen anderen Server.');
+  h += `<div class="reihe">${tf('pruef_intervall', '10s', 'Prüf-Intervall (Standard 10s)')}${tf('max_verbindungen', 'unbegrenzt', 'max. Verbindungen je Server')}</div>`;
+  h += `<div class="feld"><span>Je Server: Gewicht und weitere HAProxy-Optionen</span>${b.server.map((s, i) => `<div class="reihe" style="margin-bottom:6px">
+      <span class="leise" style="min-width:150px">${esc(s.adresse || 'Server ' + (i + 1))}:${s.port}</span>
+      <input type="number" min="0" max="256" style="width:110px" value="${esc(s.gewicht ?? '')}" placeholder="Gewicht" oninput="A.e.backend_def.server[${i}].gewicht=this.value">
+      <input style="flex:1;min-width:180px" value="${esc(s.optionen || '')}" placeholder="z. B. resolvers dns init-addr none" oninput="A.e.backend_def.server[${i}].optionen=this.value"></div>`).join('')}</div>`;
+  h += `<label class="feld"><span>Eigene HAProxy-Zeilen im Backend (für alles, was es hier nicht als Schalter gibt – wird beim Übernehmen von HAProxy geprüft)</span>
+    <textarea style="min-height:110px" spellcheck="false" placeholder="z. B.&#10;http-request set-header X-Mein-Header wert&#10;option http-server-close" oninput="A.e.backend_def.eigene=this.value">${esc(b.eigene || '')}</textarea></label>`;
+  h += `</details>`;
+  h += `<label class="feld" style="margin-top:12px"><span>Notiz zum Backend (optional)</span><input value="${esc(b.notiz)}" oninput="A.e.backend_def.notiz=this.value"></label>`;
   return h;
+}
+
+// --- Anmeldung
+function sAnmeldung() {
+  const e = A.e, a = e.anmeldung, tls = e.modus === 'tls';
+  if (!tls) return `<h2>Anmeldung</h2><div class="hinweisbox warn">Beim verschlüsselten Durchreichen kann HAProxy keine Anmeldung verlangen – das muss das Ziel selbst. Weiter mit „Weiter“.</div>`;
+  const setze = art => `A.e.anmeldung.art='${art}';zeichneSchritt()`;
+  let h = `<h2>Muss man sich anmelden?</h2><div class="wahl">
+    ${radio('anm', 'keine', a.art, 'Keine Anmeldung', 'die Anwendung kümmert sich selbst darum (oder braucht keine).', setze('keine'))}
+    ${radio('anm', 'basic', a.art, 'HTTP-Basic – Benutzer in HAProxy', 'Browser-Anmeldefenster. Benutzer und Passwörter stehen in einer Liste hier in haproxy-ui.', setze('basic'))}
+    ${radio('anm', 'authentik', a.art, 'Authentik – Anmeldeseite', 'Anmeldung über Authentik (SSO, LDAP/AD, Zwei-Faktor). Authentik leitet nach der Anmeldung weiter.', setze('authentik'))}
+    ${radio('anm', 'basic_authentik', a.art, 'HTTP-Basic – Benutzer aus Authentik', 'Browser-Anmeldefenster, aber Authentik prüft (also auch LDAP/AD-Benutzer). Gut für Apps/Skripte.', setze('basic_authentik'))}
+  </div>`;
+  if (a.art === 'keine') return h;
+  if (a.art === 'basic') {
+    const namen = Object.keys(A.listen);
+    h += `<div class="reihe"><label class="feld"><span>Benutzerliste</span><select onchange="A.e.anmeldung.liste=this.value;zeichneSchritt()"><option value="">– wählen –</option>${namen.map(n => `<option ${n===a.liste?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
+      <label class="feld"><span>&nbsp;</span><button class="k" onclick="listeNeu()">+ neue Liste</button></label></div>`;
+    if (a.liste && A.listen[a.liste]) {
+      const l = A.listen[a.liste];
+      h += `<div class="feld"><span>Benutzer in „${esc(a.liste)}“ (gilt für alle Adressen, die diese Liste nutzen)</span>
+        ${l.benutzer.map((u, i) => `<div class="reihe" style="margin-bottom:6px">
+          <input value="${esc(u.name)}" placeholder="Benutzername" ${u.gesetzt?'readonly':''} oninput="A.listen['${esc(a.liste)}'].benutzer[${i}].name=this.value.trim()">
+          <input type="password" autocomplete="new-password" value="${esc(u.passwort||'')}" placeholder="${u.gesetzt?'Passwort gesetzt – leer lassen = unverändert':'Passwort (mind. 8 Zeichen)'}" oninput="A.listen['${esc(a.liste)}'].benutzer[${i}].passwort=this.value">
+          <button class="k gefahr" onclick="A.listen['${esc(a.liste)}'].benutzer.splice(${i},1);zeichneSchritt()">✕</button></div>`).join('')}
+        <div><button class="k" onclick="A.listen['${esc(a.liste)}'].benutzer.push({name:'',passwort:''});zeichneSchritt()">+ Benutzer</button></div>
+        <span>Passwörter werden nur als SHA-512-Hash gespeichert. Das Anmeldefenster schickt sie bei jeder Anfrage mit – deshalb nur über https (ist hier immer so).</span></div>`;
+    }
+    h += `<label class="haken"><input type="checkbox" ${a.header_entfernen?'checked':''} onchange="A.e.anmeldung.header_entfernen=this.checked"><span>Anmeldedaten nicht an die Anwendung weitergeben<small>entfernt den Authorization-Header nach erfolgreicher Anmeldung.</small></span></label>`;
+  } else {
+    const be = bkInfo.backends.filter(b => b.mode === 'http' && b.name !== e.backend);
+    if (!a.authentik_backend) { const vor = be.find(b => /authentik/i.test(b.name)); if (vor) a.authentik_backend = vor.name; }
+    h += `<label class="feld"><span>Authentik-Backend (Adresse mit Vorlage „Authentik“ vorher anlegen)</span><select onchange="A.e.anmeldung.authentik_backend=this.value"><option value="">– wählen –</option>${be.map(b => `<option ${b.name===a.authentik_backend?'selected':''}>${esc(b.name)}</option>`).join('')}</select></label>
+      <div class="hinweisbox">So läuft es: HAProxy schickt die Adresse an Authentik. Authentik verlangt die Anmeldung und reicht dann selbst an das Ziel aus Schritt 2 weiter. In Authentik dafür eine Anwendung mit <b>Proxy-Anbieter (Modus Proxy)</b> anlegen und dem eingebetteten Outpost zuweisen – die genauen Werte stehen im letzten Schritt.${a.art === 'basic_authentik' ? '<br>Für HTTP-Basic zusätzlich beim Proxy-Anbieter <b>„Intercept header authentication“</b> einschalten. HAProxy zeigt dann das Anmeldefenster, Authentik prüft Benutzer und Passwort (auch LDAP/AD, bei Zwei-Faktor ein App-Passwort).' : ''}</div>`;
+  }
+  if (a.art !== 'authentik') h += `<label class="feld"><span>Name im Anmeldefenster</span><input value="${esc(a.realm)}" oninput="A.e.anmeldung.realm=this.value"></label>`;
+  h += `<h2 style="margin-top:12px">Ausnahmen</h2>
+    <label class="haken"><input type="checkbox" ${a.intern_frei?'checked':''} onchange="A.e.anmeldung.intern_frei=this.checked"><span>Von innen ohne Anmeldung<small>Geräte aus den internen Netzen kommen direkt durch – Anmeldung nur von außen.</small></span></label>
+    <label class="feld"><span>Pfade ohne Anmeldung (mit Leerzeichen getrennt, „beginnt mit“)</span><input value="${esc(a.ausnahmen)}" placeholder="z. B. /api /.well-known /share" oninput="A.e.anmeldung.ausnahmen=this.value"></label>`;
+  return h;
+}
+function listeNeu() {
+  const n = (prompt('Name der Benutzerliste (klein, z. B. familie):') || '').trim().toLowerCase();
+  if (!n) return;
+  if (!/^[a-z0-9][a-z0-9_-]{0,30}$/.test(n)) return hinweis('Name: kleine Buchstaben, Zahlen, - und _', 'bad');
+  if (!A.listen[n]) A.listen[n] = {benutzer: [{name: '', passwort: ''}]};
+  A.e.anmeldung.liste = n; zeichneSchritt();
 }
 
 // --- Regeln (Baukasten)
@@ -564,6 +694,7 @@ function s4() {
       <tr><th>Zugang</th><td>${esc(ZUGANG[e.zugang])}</td></tr>
       <tr><th>Verschlüsselung</th><td>${e.modus==='tls'?'HAProxy entschlüsselt':'verschlüsselt durchgereicht'}</td></tr>
       <tr><th>Backend</th><td>${esc(e.backend)}${e.backend_neu ? ' → ' + esc(e.backend_def.server.filter(s=>s.adresse).map(s => (s.https?'https://':'') + s.adresse + ':' + s.port).join(', ')) : ' (vorhanden)'}</td></tr>
+      <tr><th>Anmeldung</th><td>${esc({keine:'keine', basic:'HTTP-Basic, Liste ' + e.anmeldung.liste, authentik:'Authentik (Anmeldeseite)', basic_authentik:'HTTP-Basic, geprüft von Authentik'}[e.modus==='tls'?e.anmeldung.art:'keine'])}${e.modus==='tls' && e.anmeldung.art!=='keine' ? esc((e.anmeldung.intern_frei?' · intern ohne':'') + (e.anmeldung.ausnahmen?' · frei: ' + e.anmeldung.ausnahmen:'')) : ''}</td></tr>
       <tr><th>Regeln</th><td>${e.regeln.length ? e.regeln.map((r, i) => `${i+1}. ${esc(regelSatz(r))}${r.aktiv===false?' <span class="marke">aus</span>':''}`).join('<br>') : '<span class="leise">keine</span>'}</td></tr></table>
     ${v.hinweise.length ? `<div class="hinweisbox"><b>Danach noch zu tun / gut zu wissen</b><ul>${v.hinweise.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
     <h2 style="margin-top:14px">Was in die Konfiguration geschrieben wird</h2>
@@ -577,7 +708,8 @@ function asDaten() {
   const e = JSON.parse(JSON.stringify(A.e));
   delete e.backend_auto;
   if (!e.backend_neu) delete e.backend_def;
-  return {eintrag: e, alt_name: A.alt};
+  if (e.modus !== 'tls') e.anmeldung = {art: 'keine'};
+  return {eintrag: e, alt_name: A.alt, benutzerlisten: A.listen};
 }
 async function vorschauLaden() {
   try { A.vorschau = await api('/api/baukasten/vorschau', asDaten()); }
