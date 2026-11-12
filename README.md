@@ -11,10 +11,23 @@ Weitere Unraid-Pakete: [haproxy-unraid](https://github.com/SysriX/haproxy_unraid
 | Reiter | Inhalt |
 | --- | --- |
 | Übersicht | Zustand, Sitzungen, Anfragen/s, Eingänge, Backends und Server mit Status, Fehlern und Datenmenge (alle 10 s) |
-| Dienste | `listen/dienste.map` als Tabelle: Name, Backend, intern/alle, tls/durch |
+| Dienste | alle Adressen als Tabelle (Zugang **nur intern / nur extern / intern + extern**, tls/durch, Anzahl Regeln) und der **Assistent „Neue Adresse“** |
 | Dateien | alle Dateien in `bearbeiten/` mit Editor (Strg+S speichert), neue Listen anlegen |
 | Änderungen | Unterschied zur laufenden Konfiguration, Knöpfe **Prüfen**, **Prüfen und übernehmen**, **Verwerfen**, **Zurück** |
 | Zertifikate | Restlaufzeit aller Zertifikate, `certs.conf`, „Jetzt aus Cert Warden holen“ |
+
+### Assistent „Neue Adresse“ (Baukasten)
+
+In vier Schritten statt Konfiguration von Hand:
+
+1. **Adresse**: Vorlage wählen (Webseite, Home Assistant, Nextcloud, Jellyfin, Authentik, Oberfläche mit https, Vaultwarden, verschlüsselt durchreichen), Adresse, Zugang (nur intern / nur extern / intern + extern), Verschlüsselung (HAProxy entschlüsselt oder durchreichen)
+2. **Ziel**: neues Backend (ein oder mehrere Server, Reserve-Server, Lastverteilung, https zum Ziel, Gesundheitsprüfung, lange Verbindungen, Zeitlimit, X-Forwarded-Port, Host-Header, Sitzung am Server halten) oder ein vorhandenes Backend
+3. **Regeln**: *wenn* Herkunft (von außen / innen / bestimmte IPs / Liste, auch verneint) *und* Pfad (beginnt mit / genau / beginnt nicht mit) *dann* sperren (403/404/429/503), umleiten, an anderes Backend, Header setzen oder entfernen – mit fertigen Bausteinen wie „Admin-Bereich nur intern“, „Nur bestimmte IPs“, „HSTS“
+4. **Prüfen**: Zusammenfassung in Worten, To-dos (DNS, fehlendes Zertifikat), die erzeugten Zeilen und der Unterschied – dann speichern oder gleich übernehmen
+
+Gespeichert wird in `bearbeiten/baukasten.json`. Daraus schreibt haproxy-ui die Zeile in `listen/dienste.map` und **nur** die markierten Blöcke `# >>> haproxy-ui: …` / `# <<< haproxy-ui: …` in `haproxy.cfg` und `dienste.cfg` – eigene Backends und Handarbeit außerhalb bleiben unangetastet. Eine ältere `haproxy.cfg` ohne diese Blöcke wird beim ersten Speichern automatisch ergänzt (sichtbar unter „Änderungen“). Bestehende Adressen lassen sich mit **Bearbeiten** wieder im Assistenten öffnen; gelöschte Adressen nehmen ihre Regeln und ungenutzten Backends mit.
+
+Braucht haproxy-unraid ab dem Stand mit Zugang `extern` (Image vom 12.11.2026 oder neuer).
 
 **Sicher:** Die Oberfläche ändert nur `bearbeiten/`. Übernommen wird immer im HAProxy-Container über `hap-uebernehmen` – also mit Prüfung, Neuladen ohne Verbindungsabbruch und automatischem Rücksprung bei Fehlern. Oben rechts zeigt „HAProxy verbunden“, ob der HAProxy-Container Aufträge annimmt.
 

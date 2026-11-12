@@ -14,6 +14,8 @@ from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+import baukasten as bk
+
 D = os.environ.get("HAPROXY_DIR", "/haproxy")
 BEARB = os.path.join(D, "bearbeiten")
 AKTIV = os.path.join(D, "aktiv")
@@ -106,9 +108,9 @@ def unterschiede():
 MAP_REL = "listen/dienste.map"
 
 
-def dienste_lesen():
+def dienste_lesen(text=None):
     zeilen = []
-    for z in lesen(pfad(MAP_REL)).splitlines():
+    for z in (lesen(pfad(MAP_REL)) if text is None else text).splitlines():
         s = z.strip()
         if not s or s.startswith("#"):
             continue
@@ -121,7 +123,8 @@ def dienste_lesen():
     return zeilen
 
 
-def dienste_schreiben(liste):
+def map_schreiben(liste):
+    """dienste.map als Text (schreibt nicht)."""
     # Kopfkommentar behalten (nur der Block am Anfang)
     # auskommentierte Beispiele weiter unten bleiben am Ende erhalten
     alt = lesen(pfad(MAP_REL)).splitlines()
@@ -144,23 +147,191 @@ def dienste_schreiben(liste):
             raise ValueError(f"Name ungültig: {name!r}")
         if not re.match(r"^[A-Za-z0-9_.-]+$", be):
             raise ValueError(f"Backend ungültig: {be!r}")
-        if zug not in ("alle", "intern") or mod not in ("tls", "durch"):
-            raise ValueError(f"{name}: Zugang alle|intern, Modus tls|durch")
+        if zug not in bk.ZUGAENGE or mod not in bk.MODI:
+            raise ValueError(f"{name}: Zugang alle|intern|extern, Modus tls|durch")
         z = f"{name:<32} {be}:{zug}:{mod}"
         if notiz:
             z += f"   # {notiz}"
         neu.append(z)
-    schreiben(pfad(MAP_REL), "\n".join(kopf + neu + ([""] + rest if rest else [])))
+    return "\n".join(kopf + neu + ([""] + rest if rest else []))
+
+
+def dienste_schreiben(liste):
+    """Tabelle „Dienste“ speichern: dienste.map + Baukasten-Blöcke passend halten."""
+    namen = [str(d.get("name", "")).strip().lower() for d in liste]
+    doppelt = {n for n in namen if namen.count(n) > 1}
+    if doppelt:
+        raise ValueError("Adresse mehrfach: " + ", ".join(sorted(doppelt)))
+    return baukasten_anwenden(bk_laden(), map_schreiben(liste))
 
 
 def backends():
-    namen = []
+    return list(backends_modus())
+
+
+def backends_modus():
+    """{backend: mode} aus haproxy.cfg + dienste.cfg (wie pruefe_map in hap-lib.sh)."""
+    out = {}
     for rel in ("haproxy.cfg", "dienste.cfg"):
+        akt = None
         for z in lesen(pfad(rel)).splitlines():
-            m = re.match(r"^\s*backend\s+(\S+)", z)
-            if m:
-                namen.append(m.group(1))
-    return namen
+            w = z.split()
+            if not w or w[0].startswith("#"):
+                continue
+            if w[0] in ("backend", "frontend", "listen", "defaults", "global", "userlist", "resolvers", "peers"):
+                akt = w[1] if w[0] == "backend" and len(w) > 1 else None
+                if akt:
+                    out[akt] = "tcp"
+            elif akt and w[0] == "mode" and len(w) > 1:
+                out[akt] = w[1]
+    return out
+
+
+# ------------------------------------------------------------------ Baukasten (Assistent)
+BK_REL = "baukasten.json"
+INTERN_BE = ("be_tls_ende", "be_certwarden_http01")
+
+
+def bk_laden():
+    return bk.laden(lesen(os.path.join(BEARB, BK_REL)))
+
+
+def baukasten_texte(daten, map_text):
+    """Berechnet die neuen Dateien (ohne zu schreiben). -> ({rel: text}, hinweise)"""
+    zeilen = dienste_lesen(map_text)
+    namen = {z["name"] for z in zeilen}
+    # Aufräumen: Dienste ohne Zeile in dienste.map, Backends ohne Nutzer
+    daten["dienste"] = {n: v for n, v in daten["dienste"].items() if n in namen}
+    benutzt = {z["backend"] for z in zeilen} | {
+        r.get("ziel") for v in daten["dienste"].values() for r in v.get("regeln", []) if r.get("aktion") == "backend"}
+    daten["backends"] = {n: v for n, v in daten["backends"].items() if n in benutzt}
+
+    hinweise = []
+    cfg_alt = lesen(pfad("haproxy.cfg"))
+    braucht = any(z["zugang"] == "extern" for z in zeilen) or any(v.get("regeln") for v in daten["dienste"].values())
+    try:
+        cfg, geaendert = bk.cfg_vorbereiten(cfg_alt)
+        hinweise += [f"haproxy.cfg ergänzt: {g}" for g in geaendert]
+        for marke, inhalt in bk.regeln_erzeugen(daten, zeilen).items():
+            cfg = bk.block_ersetzen(cfg, marke, "\n".join(inhalt))
+    except bk.Fehler:
+        if braucht:
+            raise
+        cfg = cfg_alt  # eigene haproxy.cfg ohne Anker – solange nichts davon gebraucht wird, nicht anfassen
+
+    dcfg = lesen(pfad("dienste.cfg"))
+    if daten["backends"] or bk.M_ANF + "backends" in dcfg:
+        dcfg = bk.block_ersetzen(dcfg, "backends", bk.backends_erzeugen(daten, zeilen), anhaengen=True)
+    return {MAP_REL: map_text, "haproxy.cfg": cfg, "dienste.cfg": dcfg}, hinweise
+
+
+def _norm(text):
+    text = text.replace("\r\n", "\n")
+    return text if text.endswith("\n") else text + "\n"
+
+
+def baukasten_anwenden(daten, map_text):
+    texte, hinweise = baukasten_texte(daten, map_text)
+    for rel, text in texte.items():
+        if _norm(text) != lesen(pfad(rel)):
+            schreiben(pfad(rel), text)
+    schreiben(os.path.join(BEARB, BK_REL), bk.speichern_text(daten))
+    return hinweise
+
+
+def zert_deckt(name, zerts):
+    for z in zerts:
+        for n in (z.get("namen") or []) + [z.get("cn") or ""]:
+            n = (n or "").lower()
+            if n and (n == name or (n.startswith("*.") and name.endswith(n[1:]) and name.count(".") == n.count("."))):
+                return z["datei"]
+    return None
+
+
+def bk_uebersicht():
+    daten = bk_laden()
+    bm = backends_modus()
+    zeilen = dienste_lesen()
+    for z in zeilen:
+        z["regeln"] = len(daten["dienste"].get(z["name"], {}).get("regeln", []))
+        z["verwaltet"] = z["backend"] in daten["backends"]
+    listen = sorted(r for r in dateiliste() if r.startswith("listen/") and r.endswith(".lst"))
+    return {"dienste": zeilen, "listen": listen, "cfg_bereit": bk.cfg_bereit(lesen(pfad("haproxy.cfg"))),
+            "backends": [{"name": n, "mode": m, "verwaltet": n in daten["backends"]} for n, m in sorted(bm.items())
+                         if not n.startswith("st_") and n not in INTERN_BE]}
+
+
+def bk_eintrag(name):
+    daten = bk_laden()
+    z = next((x for x in dienste_lesen() if x["name"] == name), None)
+    if not z:
+        raise ValueError("Adresse nicht gefunden")
+    be = daten["backends"].get(z["backend"])
+    return {"name": name, "zugang": z["zugang"], "modus": z["modus"], "notiz": z["notiz"],
+            "backend": z["backend"], "backend_neu": bool(be), "backend_def": be,
+            "regeln": daten["dienste"].get(name, {}).get("regeln", [])}
+
+
+def bk_planen(e, alt_name=None):
+    daten = bk_laden()
+    x = bk.eintrag_pruefen(e, backends_modus(), set(daten["backends"]))
+    alle = dienste_lesen()
+    alt_name = (alt_name or "").strip().lower() or None
+    if any(z["name"] == x["name"] for z in alle) and x["name"] != alt_name:
+        raise ValueError(f"{x['name']} gibt es schon – in der Liste auf „Bearbeiten“ gehen")
+    zeile = {"name": x["name"], "backend": x["backend"], "zugang": x["zugang"], "modus": x["modus"], "notiz": x["notiz"]}
+    pos = next((i for i, z in enumerate(alle) if z["name"] == alt_name), None)
+    zeilen = [z for z in alle if z["name"] != alt_name]
+    if pos is None:
+        zeilen.append(zeile)
+    else:
+        zeilen.insert(pos, zeile)
+        if alt_name != x["name"]:
+            daten["dienste"].pop(alt_name, None)
+    daten["dienste"][x["name"]] = {"regeln": x["regeln"]}
+    if x.get("backend_def"):
+        daten["backends"][x["backend"]] = x["backend_def"]
+    return x, daten, map_schreiben(zeilen)
+
+
+def bk_vorschau(e, alt_name=None):
+    x, daten, map_text = bk_planen(e, alt_name)
+    texte, hinweise = baukasten_texte(daten, map_text)
+    eigene = [z for z in dienste_lesen(map_text) if z["name"] == x["name"]]
+    regeln = bk.regeln_erzeugen({"dienste": {x["name"]: daten["dienste"][x["name"]]}, "backends": {}}, eigene)
+    regel_text = "\n\n".join(f"# in haproxy.cfg, Block {m}:\n" + "\n".join(v) for m, v in regeln.items() if v)
+    backend_text = bk.backend_erzeugen(x["backend"], daten["backends"][x["backend"]]) \
+        if x["backend"] in daten["backends"] else f"# vorhandenes Backend {x['backend']} (bleibt unverändert)"
+    if x["modus"] == "tls":
+        d = zert_deckt(x["name"], zertifikate())
+        hinweise.append(f"Zertifikat vorhanden: certs/{d}" if d else
+                        f"Noch kein Zertifikat für {x['name']} in certs/ – in Cert Warden anlegen und in certs.conf "
+                        f"eintragen (bis dahin zeigt HAProxy das Ersatz-Zertifikat)")
+    if x["zugang"] in ("intern", "alle"):
+        hinweise.append(f"Interner DNS: {x['name']} → IP von HAProxy")
+    if x["zugang"] in ("extern", "alle"):
+        hinweise.append(f"Öffentlicher DNS: {x['name']} → eure WAN-Adresse (Firewall leitet 80/443 an HAProxy)")
+    if x["zugang"] == "extern":
+        hinweise.append("Von innen wird abgelehnt (Grund „nur_extern“)")
+    diff = []
+    for rel, text in texte.items():
+        a = lesen(pfad(rel)).splitlines(keepends=True)
+        b = _norm(text).splitlines(keepends=True)
+        if a != b:
+            diff.append("".join(difflib.unified_diff(a, b, "bearbeiten/" + rel, "neu/" + rel)))
+    return {"map_zeile": next((l for l in map_text.splitlines() if l.split()[:1] == [x["name"]]), ""),
+            "backend": backend_text, "regeln": regel_text or "# keine Regeln", "hinweise": hinweise,
+            "diff": "\n".join(diff)}
+
+
+def bk_speichern(e, alt_name=None):
+    _, daten, map_text = bk_planen(e, alt_name)
+    return baukasten_anwenden(daten, map_text)
+
+
+def bk_loeschen(name):
+    zeilen = [z for z in dienste_lesen() if z["name"] != name]
+    return baukasten_anwenden(bk_laden(), map_schreiben(zeilen))
 
 
 # ------------------------------------------------------------------ Aufträge an den HAProxy-Container
@@ -443,6 +614,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.antwort(200, {"diff": unterschiede()})
             if u.path == "/api/auftrag":
                 return self.antwort(200, auftrag_ergebnis())
+            if u.path == "/api/baukasten":
+                return self.antwort(200, bk_uebersicht())
+            if u.path == "/api/baukasten/eintrag":
+                return self.antwort(200, bk_eintrag(q.get("name", [""])[0]))
         except ValueError as e:
             return self.antwort(400, {"fehler": str(e)})
         self.antwort(404, {"fehler": "unbekannt"})
@@ -478,8 +653,7 @@ class Handler(BaseHTTPRequestHandler):
                     SESSIONS.pop(c["hapui"].value, None)
                 return self.antwort(200, {"ok": True}, extra={"Set-Cookie": "hapui=; Path=/; Max-Age=0"})
             if u.path == "/api/dienste":
-                dienste_schreiben(d.get("dienste", []))
-                return self.antwort(200, {"ok": True})
+                return self.antwort(200, {"ok": True, "hinweise": dienste_schreiben(d.get("dienste", []))})
             if u.path == "/api/datei":
                 schreiben(pfad(d.get("pfad", "")), str(d.get("text", "")))
                 return self.antwort(200, {"ok": True})
@@ -501,9 +675,20 @@ class Handler(BaseHTTPRequestHandler):
                         schreiben(os.path.join(BEARB, rel), lesen(a))
                     else:
                         os.remove(os.path.join(BEARB, rel))
+                a = os.path.join(AKTIV, BK_REL)
+                if os.path.exists(a):
+                    schreiben(os.path.join(BEARB, BK_REL), lesen(a))
+                elif os.path.exists(os.path.join(BEARB, BK_REL)):
+                    os.remove(os.path.join(BEARB, BK_REL))
                 return self.antwort(200, {"ok": True})
             if u.path == "/api/auftrag":
                 return self.antwort(200, {"id": auftrag_stellen(str(d.get("aktion", "")))})
+            if u.path == "/api/baukasten/vorschau":
+                return self.antwort(200, bk_vorschau(d.get("eintrag") or {}, d.get("alt_name")))
+            if u.path == "/api/baukasten/speichern":
+                return self.antwort(200, {"ok": True, "hinweise": bk_speichern(d.get("eintrag") or {}, d.get("alt_name"))})
+            if u.path == "/api/baukasten/loeschen":
+                return self.antwort(200, {"ok": True, "hinweise": bk_loeschen(str(d.get("name", "")))})
         except ValueError as e:
             return self.antwort(400, {"fehler": str(e)})
         self.antwort(404, {"fehler": "unbekannt"})

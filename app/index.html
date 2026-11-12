@@ -49,7 +49,44 @@ td input,td select{width:100%}
 #hinweis{position:fixed;bottom:16px;right:16px;max-width:420px;background:var(--karte);border:1px solid var(--rand);border-radius:10px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.18);display:none;z-index:9}
 #anmelden{max-width:340px;margin:12vh auto}
 .versteckt{display:none!important}
-@media (max-width:760px){.zwei{grid-template-columns:1fr}header{flex-wrap:wrap}}
+/* Assistent */
+.schritte{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.schritte button{flex:1;min-width:120px;background:var(--karte);border:1px solid var(--rand);border-radius:9px;padding:9px 12px;text-align:left;font:inherit;color:var(--leise);cursor:pointer}
+.schritte button b{display:block;color:var(--text);font-weight:600}
+.schritte button.an{border-color:var(--akzent);box-shadow:inset 0 -2px 0 var(--akzent)}
+.schritte button.fertig b::before{content:"✓ ";color:var(--ok)}
+.wahl{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:6px 0 14px}
+.wahl label{display:block;border:1px solid var(--rand);border-radius:9px;padding:10px 12px;cursor:pointer;background:var(--karte)}
+.wahl label:has(input:checked){border-color:var(--akzent);background:color-mix(in srgb,var(--akzent) 8%,var(--karte))}
+.wahl input{margin:0 6px 0 0}
+.wahl .t{font-weight:600}
+.wahl .b{color:var(--leise);font-size:12.5px;margin-top:3px}
+.feld{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.feld > span{font-size:12.5px;color:var(--leise)}
+.reihe{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.reihe .feld{flex:1;min-width:140px}
+.haken{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
+.haken input{margin-top:3px}
+.haken small{display:block;color:var(--leise)}
+.server{display:grid;grid-template-columns:1fr 90px auto auto auto 34px;gap:8px;align-items:center;margin-bottom:6px}
+.server label{white-space:nowrap;font-size:13px;color:var(--leise)}
+.regel{border:1px solid var(--rand);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--karte)}
+.regel.aus{opacity:.55}
+.regel .zeile{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0}
+.regel .wort{font-weight:650;font-size:12px;letter-spacing:.04em;color:var(--akzent);min-width:54px}
+.regel input,.regel select{min-width:0}
+.regel .kopf{display:flex;gap:8px;align-items:center;margin-bottom:4px}
+.regel .kopf .satz{flex:1;color:var(--leise);font-size:12.5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{border:1px dashed var(--rand);border-radius:999px;padding:4px 11px;background:none;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+.chip:hover{border-color:var(--akzent);color:var(--akzent)}
+.hinweisbox{border-left:3px solid var(--akzent);background:var(--code);padding:8px 12px;border-radius:6px;margin:8px 0;font-size:13px}
+.hinweisbox.warn{border-color:var(--warn)}
+.hinweisbox ul{margin:4px 0;padding-left:18px}
+.fehlerbox{border-left:3px solid var(--bad);background:var(--code);padding:8px 12px;border-radius:6px;margin:8px 0;color:var(--bad)}
+.unten{display:flex;gap:8px;justify-content:space-between;margin-top:16px;flex-wrap:wrap}
+details summary{cursor:pointer;color:var(--leise);margin:8px 0}
+@media (max-width:760px){.zwei{grid-template-columns:1fr}header{flex-wrap:wrap}.server{grid-template-columns:1fr 80px 34px}.server label{grid-column:span 1}}
 </style>
 </head>
 <body>
@@ -88,15 +125,34 @@ td input,td select{width:100%}
   <!-- Dienste -->
   <section id="s-dienste" class="versteckt">
     <div class="karte">
-      <h2>Dienste nach Name (listen/dienste.map)</h2>
-      <p class="leise" style="margin-top:-6px">Name, wie er im Browser steht (SNI). <b>tls</b> = HAProxy beendet TLS mit Zertifikat aus Cert Warden, <b>durch</b> = verschlüsselt durchreichen. <b>intern</b> = nur aus internen Netzen.</p>
+      <h2>Dienste nach Adresse (listen/dienste.map)</h2>
+      <p class="leise" style="margin-top:-6px">Adresse, wie sie im Browser steht. <b>Zugang</b>: nur intern, nur extern oder beides. <b>tls</b> = HAProxy entschlüsselt (Zertifikat aus Cert Warden), <b>durch</b> = verschlüsselt durchreichen. Neue Adressen am besten über den Assistenten anlegen – dort gibt es auch Regeln und Backend-Optionen.</p>
+      <div id="cfg-hinweis" class="hinweisbox warn versteckt">Die <code>haproxy.cfg</code> ist noch nicht für „nur extern“ und Regeln vorbereitet. Sie wird beim nächsten Speichern automatisch ergänzt (nur zusätzliche Zeilen, siehe „Änderungen“).</div>
       <div class="leiste">
-        <button class="k" onclick="dienstNeu()">+ Dienst</button>
-        <button class="k p" onclick="diensteSpeichern()">In bearbeiten/ speichern</button>
-        <span class="leise">Danach unter „Änderungen“ prüfen und übernehmen.</span>
+        <button class="k p" onclick="assistentOeffnen()">+ Neue Adresse (Assistent)</button>
+        <button class="k" onclick="dienstNeu()">+ Zeile von Hand</button>
+        <button class="k" onclick="diensteSpeichern()">Tabelle speichern</button>
+        <span class="leise">Gespeichert wird in bearbeiten/ – danach unter „Änderungen“ prüfen und übernehmen.</span>
       </div>
       <div class="tab-wrap"><table id="t-dienste"></table></div>
       <datalist id="be-liste"></datalist>
+    </div>
+  </section>
+
+  <!-- Assistent -->
+  <section id="s-assistent" class="versteckt">
+    <div class="leiste"><h2 style="margin:0;font-size:16px" id="as-titel">Neue Adresse</h2>
+      <span class="rechts"><button class="k" onclick="wechsel('dienste')">Abbrechen</button></span></div>
+    <div class="schritte" id="as-schritte"></div>
+    <div class="karte" id="as-inhalt"></div>
+    <div id="as-fehler"></div>
+    <div class="unten">
+      <button class="k" id="as-zurueck" onclick="schritt(A.s - 1)">← Zurück</button>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="k" id="as-speichern" onclick="asSpeichern(false)">In bearbeiten/ speichern</button>
+        <button class="k p" id="as-uebernehmen" onclick="asSpeichern(true)">Speichern und übernehmen</button>
+        <button class="k p" id="as-weiter" onclick="schritt(A.s + 1)">Weiter →</button>
+      </span>
     </div>
   </section>
 
@@ -258,24 +314,284 @@ function diffHtml(d) {
 }
 
 // Dienste
+const ZUGANG = {intern: 'nur intern', extern: 'nur extern', alle: 'intern + extern'};
+let bkInfo = {backends: [], listen: [], dienste: []};
 async function diensteLaden() {
-  const j = await api('/api/dienste'); dienste = j.dienste;
-  $('#be-liste').innerHTML = j.backends.map(b => `<option value="${esc(b)}">`).join('');
+  bkInfo = await api('/api/baukasten');
+  dienste = bkInfo.dienste;
+  $('#be-liste').innerHTML = bkInfo.backends.map(b => `<option value="${esc(b.name)}">`).join('');
+  $('#cfg-hinweis').classList.toggle('versteckt', bkInfo.cfg_bereit);
   zeichneDienste();
 }
 function zeichneDienste() {
-  const sel = (feld, i, werte) => `<select onchange="dienste[${i}].${feld}=this.value">${werte.map(w => `<option ${dienste[i][feld]===w?'selected':''}>${w}</option>`).join('')}</select>`;
-  $('#t-dienste').innerHTML = '<tr><th>Name</th><th>Backend</th><th>Zugang</th><th>Modus</th><th>Notiz</th><th></th></tr>' +
+  const sel = (feld, i, werte, namen) => `<select onchange="dienste[${i}].${feld}=this.value">${werte.map(w => `<option value="${w}" ${dienste[i][feld]===w?'selected':''}>${esc((namen||{})[w]||w)}</option>`).join('')}</select>`;
+  $('#t-dienste').innerHTML = '<tr><th>Adresse</th><th>Backend</th><th>Zugang</th><th>Modus</th><th class="z">Regeln</th><th>Notiz</th><th></th></tr>' +
+    (dienste.length ? '' : '<tr><td colspan="7" class="leise">Noch keine Adressen – „Neue Adresse (Assistent)“.</td></tr>') +
     dienste.map((d, i) => `<tr><td><input value="${esc(d.name)}" oninput="dienste[${i}].name=this.value" placeholder="dienst.example.de"></td>
-      <td><input list="be-liste" value="${esc(d.backend)}" oninput="dienste[${i}].backend=this.value"></td>
-      <td>${sel('zugang', i, ['intern','alle'])}</td><td>${sel('modus', i, ['tls','durch'])}</td>
+      <td><input list="be-liste" value="${esc(d.backend)}" oninput="dienste[${i}].backend=this.value" title="${d.verwaltet?'vom Assistenten angelegt':''}"></td>
+      <td>${sel('zugang', i, ['intern','extern','alle'], ZUGANG)}</td><td>${sel('modus', i, ['tls','durch'])}</td>
+      <td class="z">${d.regeln ? `<span class="marke">${d.regeln}</span>` : '<span class="leise">–</span>'}</td>
       <td><input value="${esc(d.notiz)}" oninput="dienste[${i}].notiz=this.value"></td>
-      <td><button class="k gefahr" title="entfernen" onclick="dienste.splice(${i},1);zeichneDienste()">✕</button></td></tr>`).join('');
+      <td style="white-space:nowrap">${d.name && !d.neu ? `<button class="k" onclick="assistentOeffnen('${esc(d.name)}')">Bearbeiten</button> ` : ''}<button class="k gefahr" title="entfernen" onclick="dienste.splice(${i},1);zeichneDienste()">✕</button></td></tr>`).join('');
 }
-function dienstNeu() { dienste.push({name:'', backend:'', zugang:'intern', modus:'tls', notiz:''}); zeichneDienste(); }
+function dienstNeu() { dienste.push({name:'', backend:'', zugang:'intern', modus:'tls', notiz:'', neu:true}); zeichneDienste(); }
 async function diensteSpeichern() {
-  try { await api('/api/dienste', {dienste}); hinweis('Gespeichert in bearbeiten/ – noch nicht übernommen'); zustandLaden(); }
+  try { const j = await api('/api/dienste', {dienste}); hinweis('Gespeichert in bearbeiten/ – noch nicht übernommen' + (j.hinweise?.length ? ' · ' + j.hinweise.join(', ') : '')); await diensteLaden(); zustandLaden(); }
   catch (e) { hinweis(e.message, 'bad'); }
+}
+
+// ---------------------------------------------------------------- Assistent „Neue Adresse“
+const VORLAGEN = {
+  generisch:   {t: 'Webseite / Dienst', b: 'beliebige Webanwendung hinter HAProxy', modus: 'tls', port: 80},
+  homeassistant: {t: 'Home Assistant', b: 'Port 8123, WebSocket', modus: 'tls', port: 8123, check: '/manifest.json', lange: true,
+    hinweis: 'In Home Assistant (configuration.yaml unter http:) <code>use_x_forwarded_for: true</code> und <code>trusted_proxies: [IP von HAProxy]</code> setzen – sonst lehnt HA ab.'},
+  nextcloud:   {t: 'Nextcloud', b: 'große Uploads, lange Synchronisation', modus: 'tls', port: 80, check: '/status.php', status: '200', lange: true, fport: true,
+    hinweis: "In Nextcloud config.php: <code>'trusted_proxies' => ['IP von HAProxy']</code> und <code>'overwriteprotocol' => 'https'</code>."},
+  jellyfin:    {t: 'Jellyfin', b: 'Medien, Apps/TV direkt', modus: 'tls', port: 8096, check: '/health', lange: true,
+    hinweis: 'In Jellyfin: Netzwerk › Bekannte Proxys: IP von HAProxy. Kein Authentik davor, sonst gehen Apps/TV nicht.'},
+  authentik:   {t: 'Authentik', b: 'Anmeldung (SSO), Port 9000', modus: 'tls', port: 9000, check: '/-/health/live/', lange: true,
+    hinweis: 'Seiten, die Authentik schützen soll, bekommen als Backend das vorhandene Authentik-Backend (Schritt 2: „Vorhandenes Backend“).'},
+  unraid:      {t: 'Oberfläche nur mit https', b: 'z. B. Unraid, Proxmox, Router', modus: 'tls', port: 443, https: true, lange: true},
+  vaultwarden: {t: 'Vaultwarden', b: 'Passwort-Tresor', modus: 'tls', port: 80, check: '/alive', lange: true},
+  durch:       {t: 'Verschlüsselt durchreichen', b: 'Ziel hat eigenes Zertifikat (z. B. Mail, grommunio)', modus: 'durch', port: 443, lange: true},
+};
+const SCHRITTE = [['Adresse', 'Name und Zugang'], ['Ziel', 'Backend und Optionen'], ['Regeln', 'Bedingungen → Aktion'], ['Prüfen', 'Vorschau und Speichern']];
+let A = null;
+
+function leeresBackend(port, https) { return {server: [{adresse: '', port: port || 80, https: !!https, pruefen: true, reserve: false}], verteilung: 'roundrobin',
+  check_pfad: '', check_status: '', lange_verbindungen: false, forwarded_port: false, host_header: '', sticky: false, timeout_server: '', notiz: '', vorlage: ''}; }
+
+async function assistentOeffnen(name) {
+  try { bkInfo = await api('/api/baukasten'); } catch (e) { return hinweis(e.message, 'bad'); }
+  A = {s: 0, max: 0, alt: null, vorlage: 'generisch', e: {name: '', zugang: 'intern', modus: 'tls', notiz: '', backend: '', backend_neu: true, backend_auto: true,
+       backend_def: leeresBackend(80), regeln: []}, vorschau: null};
+  if (name) {
+    try {
+      const e = await api('/api/baukasten/eintrag?name=' + encodeURIComponent(name));
+      A.alt = name; A.max = 3; A.vorlage = '';
+      A.e = Object.assign(A.e, e, {backend_auto: false});
+      if (!e.backend_def) A.e.backend_def = leeresBackend(80);
+    } catch (err) { return hinweis(err.message, 'bad'); }
+  }
+  $('#as-titel').textContent = name ? 'Adresse bearbeiten: ' + name : 'Neue Adresse';
+  seite = 'assistent';
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('an', b.dataset.s === 'dienste'));
+  document.querySelectorAll('main > section').forEach(x => x.classList.toggle('versteckt', x.id !== 's-assistent'));
+  schritt(0);
+}
+
+function vorlageWaehlen(k) {
+  const v = VORLAGEN[k]; A.vorlage = k;
+  A.e.modus = v.modus;
+  const b = leeresBackend(v.port, v.https);
+  b.server[0].adresse = A.e.backend_def.server[0]?.adresse || '';
+  Object.assign(b, {check_pfad: v.check || '', check_status: v.status || '', lange_verbindungen: !!v.lange, forwarded_port: !!v.fport, vorlage: k});
+  A.e.backend_def = b; A.e.backend_neu = true;
+  zeichneSchritt();
+}
+
+function beAuto() {
+  if (!A.e.backend_auto || !A.e.backend_neu) return;
+  const teil = (A.e.name.split('.')[0] || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  let n = teil ? 'be_' + teil : '';
+  const fremd = new Set(bkInfo.backends.filter(b => !b.verwaltet).map(b => b.name));
+  for (let i = 2; n && fremd.has(n); i++) n = 'be_' + teil + '_' + i;
+  A.e.backend = n;
+  const f = $('#as-be-name'); if (f) f.value = n;
+}
+
+function pruefeSchritt(s) {
+  const e = A.e;
+  if (s === 0) {
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(e.name.trim().toLowerCase())) return 'Bitte eine vollständige Adresse eingeben, z. B. dienst.example.de';
+    if (!A.alt || A.alt !== e.name) { if (bkInfo.dienste.some(d => d.name === e.name.trim().toLowerCase())) return 'Diese Adresse gibt es schon – in der Liste auf „Bearbeiten“ gehen.'; }
+  }
+  if (s === 1) {
+    if (!e.backend) return 'Backend-Name fehlt';
+    if (e.backend_neu && !e.backend_def.server.some(x => x.adresse.trim())) return 'Mindestens einen Server mit Adresse angeben';
+  }
+  return null;
+}
+
+async function schritt(n) {
+  if (n < 0 || n > 3) return;
+  if (n > A.s) { for (let s = A.s; s < n; s++) { const f = pruefeSchritt(s); if (f) { zeigeFehler(f); return; } } }
+  zeigeFehler('');
+  A.s = n; A.max = Math.max(A.max, n);
+  if (n === 3) { A.vorschau = null; zeichneSchritt(); await vorschauLaden(); return; }
+  zeichneSchritt();
+}
+function zeigeFehler(t) { $('#as-fehler').innerHTML = t ? `<div class="fehlerbox">${esc(t)}</div>` : ''; }
+
+function zeichneSchritt() {
+  $('#as-schritte').innerHTML = SCHRITTE.map(([t, b], i) => `<button class="${i===A.s?'an':''} ${i<A.max||(i<A.s)?'fertig':''}" onclick="schritt(${i})"><b>${i+1}. ${t}</b>${b}</button>`).join('');
+  $('#as-zurueck').disabled = A.s === 0;
+  $('#as-weiter').classList.toggle('versteckt', A.s === 3);
+  $('#as-speichern').classList.toggle('versteckt', A.s !== 3);
+  $('#as-uebernehmen').classList.toggle('versteckt', A.s !== 3);
+  $('#as-inhalt').innerHTML = [s1, s2, s3, s4][A.s]();
+}
+
+const radio = (gruppe, wert, aktuell, titel, text, aktion) => `<label><input type="radio" name="${gruppe}" ${wert===aktuell?'checked':''} onchange="${aktion}"><span class="t">${titel}</span><div class="b">${text}</div></label>`;
+
+function s1() {
+  const e = A.e;
+  return `${A.alt ? '' : `<h2>Was soll erreichbar werden?</h2>
+    <div class="wahl">${Object.entries(VORLAGEN).map(([k, v]) => radio('vorlage', k, A.vorlage, esc(v.t), esc(v.b), `vorlageWaehlen('${k}')`)).join('')}</div>`}
+    <div class="reihe">
+      <label class="feld"><span>Adresse (wie im Browser)</span><input id="as-name" value="${esc(e.name)}" placeholder="dienst.example.de" oninput="A.e.name=this.value.trim().toLowerCase();beAuto()" autocomplete="off"></label>
+      <label class="feld"><span>Notiz (optional)</span><input value="${esc(e.notiz)}" oninput="A.e.notiz=this.value" placeholder="wofür ist das?"></label>
+    </div>
+    <h2>Von wo erreichbar?</h2>
+    <div class="wahl">
+      ${radio('zugang', 'intern', e.zugang, 'Nur intern', 'nur aus den internen Netzen (intern-netze.lst). Von außen: abgelehnt.', "A.e.zugang='intern'")}
+      ${radio('zugang', 'alle', e.zugang, 'Intern + extern', 'von überall. Interne Geräte gehen direkt (interner DNS), externe über die Firewall.', "A.e.zugang='alle'")}
+      ${radio('zugang', 'extern', e.zugang, 'Nur extern', 'nur aus dem Internet. Interne Geräte werden abgelehnt.', "A.e.zugang='extern'")}
+    </div>
+    <h2>Verschlüsselung</h2>
+    <div class="wahl">
+      ${radio('modus', 'tls', e.modus, 'HAProxy entschlüsselt (empfohlen)', 'Zertifikat aus Cert Warden. Regeln nach Pfad, Header, Umleitungen möglich.', "A.e.modus='tls';zeichneSchritt()")}
+      ${radio('modus', 'durch', e.modus, 'Verschlüsselt durchreichen', 'Das Ziel hat sein eigenes Zertifikat. HAProxy sieht nur den Namen – Regeln nur nach Herkunft.', "A.e.modus='durch';A.e.backend_def.server.forEach(s=>s.https=false);zeichneSchritt()")}
+    </div>`;
+}
+
+function s2() {
+  const e = A.e, b = e.backend_def, tls = e.modus === 'tls';
+  const passend = bkInfo.backends.filter(x => x.mode === (tls ? 'http' : 'tcp'));
+  const v = VORLAGEN[A.vorlage || b.vorlage];
+  let h = `<h2>Wohin soll HAProxy weiterleiten?</h2>
+    <div class="wahl">
+      ${radio('beart', 'neu', e.backend_neu ? 'neu' : 'alt', 'Neues Backend', 'Server-Adresse und Port hier eintragen.', "A.e.backend_neu=true;A.e.backend_auto=true;beAuto();zeichneSchritt()")}
+      ${radio('beart', 'alt', e.backend_neu ? 'neu' : 'alt', 'Vorhandenes Backend', passend.length ? `${passend.length} passende vorhanden (mode ${tls?'http':'tcp'})` : 'keins mit passendem Modus vorhanden', "A.e.backend_neu=false;A.e.backend_auto=false;A.e.backend='';zeichneSchritt()")}
+    </div>`;
+  if (v?.hinweis) h += `<div class="hinweisbox">${v.hinweis}</div>`;
+  if (!e.backend_neu) {
+    return h + `<label class="feld"><span>Backend</span><select onchange="A.e.backend=this.value"><option value="">– wählen –</option>${passend.map(x => `<option ${x.name===e.backend?'selected':''} value="${esc(x.name)}">${esc(x.name)}${x.verwaltet?' (Assistent)':''}</option>`).join('')}</select></label>
+      <p class="leise">Mehrere Adressen dürfen dasselbe Backend nutzen – z. B. alle von Authentik geschützten Seiten das Authentik-Backend.</p>`;
+  }
+  h += `<div class="reihe"><label class="feld"><span>Name des Backends</span><input id="as-be-name" value="${esc(e.backend)}" oninput="A.e.backend=this.value.trim();A.e.backend_auto=false" placeholder="be_dienst"></label></div>
+    <div class="feld"><span>Server (Ziel im Netz)</span>
+    ${b.server.map((s, i) => `<div class="server">
+      <input value="${esc(s.adresse)}" placeholder="IP oder Name, z. B. 192.168.10.50" oninput="A.e.backend_def.server[${i}].adresse=this.value.trim()">
+      <input type="number" min="1" max="65535" value="${s.port}" oninput="A.e.backend_def.server[${i}].port=+this.value" title="Port">
+      ${tls ? `<label title="Ziel spricht selbst https (Zertifikat wird nicht geprüft)"><input type="checkbox" ${s.https?'checked':''} onchange="A.e.backend_def.server[${i}].https=this.checked"> https</label>` : '<span></span>'}
+      <label title="HAProxy prüft alle 10 s, ob das Ziel antwortet"><input type="checkbox" ${s.pruefen?'checked':''} onchange="A.e.backend_def.server[${i}].pruefen=this.checked"> prüfen</label>
+      <label title="Nur benutzen, wenn alle anderen ausgefallen sind">${i ? `<input type="checkbox" ${s.reserve?'checked':''} onchange="A.e.backend_def.server[${i}].reserve=this.checked"> Reserve` : ''}</label>
+      <button class="k gefahr" ${b.server.length<2?'disabled':''} onclick="A.e.backend_def.server.splice(${i},1);zeichneSchritt()">✕</button></div>`).join('')}
+    <div><button class="k" onclick="A.e.backend_def.server.push({adresse:'',port:A.e.backend_def.server[0]?.port||80,https:!!A.e.backend_def.server[0]?.https,pruefen:true,reserve:false});zeichneSchritt()">+ weiterer Server</button></div></div>`;
+  if (b.server.length > 1) h += `<label class="feld"><span>Lastverteilung</span><select onchange="A.e.backend_def.verteilung=this.value">${[['roundrobin','reihum'],['leastconn','wenigste Verbindungen'],['source','gleiche Quelle → gleicher Server'],['first','erster freier']].map(([k,t]) => `<option value="${k}" ${b.verteilung===k?'selected':''}>${t}</option>`).join('')}</select></label>`;
+  h += `<h2 style="margin-top:8px">Optionen</h2>`;
+  const haken = (feld, titel, text) => `<label class="haken"><input type="checkbox" ${b[feld]?'checked':''} onchange="A.e.backend_def.${feld}=this.checked"><span>${titel}<small>${text}</small></span></label>`;
+  h += haken('lange_verbindungen', 'Lange Verbindungen', 'WebSocket, große Uploads, Streaming, Mail – Zeitlimit 1 Stunde statt 60 s.');
+  if (tls) {
+    h += `<div class="reihe">
+      <label class="feld"><span>Gesundheitsprüfung: Pfad (leer = nur Port prüfen)</span><input value="${esc(b.check_pfad)}" placeholder="/health" oninput="A.e.backend_def.check_pfad=this.value.trim()"></label>
+      <label class="feld"><span>erwarteter Status (leer = 2xx/3xx)</span><input value="${esc(b.check_status)}" placeholder="200" oninput="A.e.backend_def.check_status=this.value.trim()"></label>
+      <label class="feld"><span>Zeitlimit Antwort (leer = 60s)</span><input value="${esc(b.timeout_server)}" placeholder="z. B. 5m" oninput="A.e.backend_def.timeout_server=this.value.trim()"></label></div>`;
+    h += haken('forwarded_port', 'X-Forwarded-Port 443 mitschicken', 'für Anwendungen, die sonst falsche Links bauen (z. B. Nextcloud).');
+    if (b.server.length > 1) h += haken('sticky', 'Besucher bleibt beim selben Server', 'per Cookie – für Anwendungen mit Sitzung auf dem Server.');
+    h += `<label class="feld"><span>Host-Header ans Ziel ändern (leer = Adresse wie aufgerufen)</span><input value="${esc(b.host_header)}" placeholder="z. B. intern.lan" oninput="A.e.backend_def.host_header=this.value.trim()"></label>`;
+  }
+  h += `<label class="feld"><span>Notiz zum Backend (optional)</span><input value="${esc(b.notiz)}" oninput="A.e.backend_def.notiz=this.value"></label>`;
+  return h;
+}
+
+// --- Regeln (Baukasten)
+const WER = {alle: 'immer (alle)', extern: 'von außen', intern: 'von innen', quelle: 'von diesen IPs / Netzen', nicht_quelle: 'NICHT von diesen IPs / Netzen', liste: 'aus Liste', nicht_liste: 'NICHT aus Liste'};
+const PFAD = {alle: 'jeder Pfad', beginnt: 'Pfad beginnt mit', nicht_beginnt: 'Pfad beginnt NICHT mit', genau: 'Pfad ist genau'};
+const AKTION = {sperren: 'sperren', umleiten: 'umleiten', backend: 'an anderes Backend', header_anfrage: 'Header ans Ziel setzen', header_antwort: 'Header in Antwort setzen', header_entfernen: 'Header aus Antwort entfernen'};
+const BAUSTEINE = {
+  admin_intern: ['Admin-Bereich nur intern', {wer: 'extern', pfad_art: 'beginnt', pfad: '/admin', aktion: 'sperren', code: 403}],
+  nur_ips: ['Nur bestimmte IPs zulassen', {wer: 'nicht_quelle', quellen: '', pfad_art: 'alle', aktion: 'sperren', code: 403}],
+  ips_sperren: ['IPs sperren', {wer: 'quelle', quellen: '', pfad_art: 'alle', aktion: 'sperren', code: 403}],
+  hsts: ['HSTS (nur https im Browser)', {wer: 'alle', pfad_art: 'alle', aktion: 'header_antwort', header: 'Strict-Transport-Security', wert: 'max-age=31536000'}],
+  pfad_backend: ['Pfad an anderes Backend', {wer: 'alle', pfad_art: 'beginnt', pfad: '/api', aktion: 'backend', ziel: ''}],
+  umleiten: ['Ganz umleiten', {wer: 'alle', pfad_art: 'alle', aktion: 'umleiten', ziel: 'https://', umleiten_art: 'praefix', code: 301}],
+  server_header: ['Server-Header verstecken', {wer: 'alle', pfad_art: 'alle', aktion: 'header_entfernen', header: 'Server'}],
+};
+function regelNeu(k) { A.e.regeln.push(Object.assign({aktiv: true, notiz: ''}, JSON.parse(JSON.stringify(BAUSTEINE[k][1])))); zeichneSchritt(); }
+function regelSatz(r) {
+  const wer = r.wer === 'alle' ? '' : (WER[r.wer] + (r.wer.includes('quelle') ? ' ' + (r.quellen || '…') : r.wer.includes('liste') ? ' ' + (r.liste || '…') : ''));
+  const pfad = r.pfad_art && r.pfad_art !== 'alle' ? PFAD[r.pfad_art] + ' ' + (r.pfad || '…') : '';
+  const bed = [wer, pfad].filter(Boolean).join(' und ');
+  const tat = r.aktion === 'sperren' ? `sperren (${r.code||403})` : r.aktion === 'umleiten' ? `umleiten nach ${r.ziel||'…'}` : r.aktion === 'backend' ? `an ${r.ziel||'…'}` : `${AKTION[r.aktion]}: ${r.header||'…'}`;
+  return (bed ? 'Wenn ' + bed : 'Immer') + ' → ' + tat;
+}
+function s3() {
+  const e = A.e, tls = e.modus === 'tls';
+  const ri = i => `A.e.regeln[${i}]`;
+  const opt = (obj, akt, nur) => Object.entries(obj).filter(([k]) => !nur || nur.includes(k)).map(([k, t]) => `<option value="${k}" ${k===akt?'selected':''}>${t}</option>`).join('');
+  const httpBe = bkInfo.backends.filter(b => b.mode === 'http').map(b => b.name);
+  if (e.backend_neu && tls && e.backend && !httpBe.includes(e.backend)) httpBe.push(e.backend);
+  let h = `<h2>Regeln – optional</h2>
+    <p class="leise" style="margin-top:-6px">Jede Regel: <b>wenn</b> Bedingungen zutreffen, <b>dann</b> Aktion. Sperren werden zuerst geprüft, dann Umleitungen und Header, zuletzt die Wahl des Backends. Die allgemeinen Schutzregeln (Scanner, Passwort-Raten, Sperrliste) gelten immer zusätzlich.</p>
+    ${tls ? '' : '<div class="hinweisbox warn">Verschlüsselt durchreichen: HAProxy sieht keinen Pfad und keine Header – hier gehen nur Sperren nach Herkunft.</div>'}
+    <div class="chips">${Object.entries(BAUSTEINE).filter(([k, [, r]]) => tls || (r.aktion === 'sperren' && r.pfad_art === 'alle')).map(([k, [t]]) => `<button class="chip" onclick="regelNeu('${k}')">+ ${t}</button>`).join('')}
+      <button class="chip" onclick="A.e.regeln.push({aktiv:true,wer:'alle',pfad_art:'alle',aktion:'sperren',code:403,notiz:''});zeichneSchritt()">+ leere Regel</button></div>`;
+  if (!e.regeln.length) h += '<p class="leise">Keine Regeln – die Adresse wird einfach an das Backend weitergeleitet.</p>';
+  h += e.regeln.map((r, i) => {
+    const werFeld = r.wer.includes('quelle') ? `<input style="flex:1;min-width:200px" value="${esc(r.quellen||'')}" placeholder="z. B. 203.0.113.7 198.51.100.0/24" oninput="${ri(i)}.quellen=this.value;satz(${i})">`
+      : r.wer.includes('liste') ? `<select onchange="${ri(i)}.liste=this.value;satz(${i})"><option value="">– Liste –</option>${bkInfo.listen.map(l => `<option ${l===r.liste?'selected':''}>${esc(l)}</option>`).join('')}</select>` : '';
+    const pfadFeld = tls ? `<span class="wort">UND</span><select onchange="${ri(i)}.pfad_art=this.value;zeichneSchritt()">${opt(PFAD, r.pfad_art||'alle')}</select>
+      ${r.pfad_art && r.pfad_art !== 'alle' ? `<input value="${esc(r.pfad||'')}" placeholder="/admin" oninput="${ri(i)}.pfad=this.value.trim();satz(${i})">` : ''}` : '';
+    let tat = '';
+    if (r.aktion === 'sperren') tat = `<select onchange="${ri(i)}.code=+this.value;satz(${i})">${[[403,'403 verboten'],[404,'404 nicht gefunden'],[429,'429 zu viele'],[503,'503 nicht verfügbar']].map(([c,t]) => `<option value="${c}" ${(r.code||403)===c?'selected':''}>${t}</option>`).join('')}</select>`;
+    if (r.aktion === 'umleiten') tat = `<input style="flex:1;min-width:220px" value="${esc(r.ziel||'')}" placeholder="https://neue-adresse.example.de" oninput="${ri(i)}.ziel=this.value.trim();satz(${i})">
+      <select onchange="${ri(i)}.umleiten_art=this.value"><option value="praefix" ${r.umleiten_art!=='adresse'?'selected':''}>Pfad anhängen</option><option value="adresse" ${r.umleiten_art==='adresse'?'selected':''}>genau diese Adresse</option></select>
+      <select onchange="${ri(i)}.code=+this.value">${[[301,'301 dauerhaft'],[302,'302 vorübergehend'],[307,'307'],[308,'308']].map(([c,t]) => `<option value="${c}" ${(r.code||302)===c?'selected':''}>${t}</option>`).join('')}</select>`;
+    if (r.aktion === 'backend') tat = `<select onchange="${ri(i)}.ziel=this.value;satz(${i})"><option value="">– Backend (mode http) –</option>${httpBe.map(b => `<option ${b===r.ziel?'selected':''}>${esc(b)}</option>`).join('')}</select>`;
+    if (r.aktion && r.aktion.startsWith('header')) tat = `<input value="${esc(r.header||'')}" placeholder="Header-Name" oninput="${ri(i)}.header=this.value.trim();satz(${i})">` +
+      (r.aktion !== 'header_entfernen' ? `<input style="flex:1;min-width:180px" value="${esc(r.wert||'')}" placeholder="Wert" oninput="${ri(i)}.wert=this.value">` : '');
+    return `<div class="regel ${r.aktiv===false?'aus':''}">
+      <div class="kopf"><input type="checkbox" title="Regel aktiv" ${r.aktiv!==false?'checked':''} onchange="${ri(i)}.aktiv=this.checked;zeichneSchritt()"><b>#${i+1}</b><span class="satz" id="satz-${i}">${esc(regelSatz(r))}</span>
+        <button class="k" ${i?'':'disabled'} title="nach oben" onclick="A.e.regeln.splice(${i-1},0,A.e.regeln.splice(${i},1)[0]);zeichneSchritt()">↑</button>
+        <button class="k gefahr" title="entfernen" onclick="A.e.regeln.splice(${i},1);zeichneSchritt()">✕</button></div>
+      <div class="zeile"><span class="wort">WENN</span><select onchange="${ri(i)}.wer=this.value;zeichneSchritt()">${opt(WER, r.wer)}</select>${werFeld}${pfadFeld}</div>
+      <div class="zeile"><span class="wort">DANN</span><select onchange="${ri(i)}.aktion=this.value;zeichneSchritt()">${opt(AKTION, r.aktion, tls ? null : ['sperren'])}</select>${tat}</div>
+      <div class="zeile"><span class="wort"></span><input style="flex:1" value="${esc(r.notiz||'')}" placeholder="Notiz (optional)" oninput="${ri(i)}.notiz=this.value"></div></div>`;
+  }).join('');
+  return h;
+}
+function satz(i) { const el = $('#satz-' + i); if (el) el.textContent = regelSatz(A.e.regeln[i]); }
+
+function s4() {
+  const v = A.vorschau;
+  if (!v) return '<p class="leise">Vorschau wird berechnet …</p>';
+  if (v.fehler) return `<div class="fehlerbox">${esc(v.fehler)}</div><p class="leise">Mit „Zurück“ korrigieren.</p>`;
+  const e = A.e;
+  return `<h2>Zusammenfassung</h2>
+    <table><tr><th>Adresse</th><td><b>${esc(e.name)}</b></td></tr>
+      <tr><th>Zugang</th><td>${esc(ZUGANG[e.zugang])}</td></tr>
+      <tr><th>Verschlüsselung</th><td>${e.modus==='tls'?'HAProxy entschlüsselt':'verschlüsselt durchgereicht'}</td></tr>
+      <tr><th>Backend</th><td>${esc(e.backend)}${e.backend_neu ? ' → ' + esc(e.backend_def.server.filter(s=>s.adresse).map(s => (s.https?'https://':'') + s.adresse + ':' + s.port).join(', ')) : ' (vorhanden)'}</td></tr>
+      <tr><th>Regeln</th><td>${e.regeln.length ? e.regeln.map((r, i) => `${i+1}. ${esc(regelSatz(r))}${r.aktiv===false?' <span class="marke">aus</span>':''}`).join('<br>') : '<span class="leise">keine</span>'}</td></tr></table>
+    ${v.hinweise.length ? `<div class="hinweisbox"><b>Danach noch zu tun / gut zu wissen</b><ul>${v.hinweise.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : ''}
+    <h2 style="margin-top:14px">Was in die Konfiguration geschrieben wird</h2>
+    <div class="feld"><span>listen/dienste.map</span><pre>${esc(v.map_zeile)}</pre></div>
+    <div class="feld"><span>dienste.cfg</span><pre>${esc(v.backend)}</pre></div>
+    <div class="feld"><span>haproxy.cfg (Regeln)</span><pre>${esc(v.regeln)}</pre></div>
+    <details><summary>Alle Änderungen als Unterschied anzeigen</summary><pre>${diffHtml(v.diff)}</pre></details>`;
+}
+
+function asDaten() {
+  const e = JSON.parse(JSON.stringify(A.e));
+  delete e.backend_auto;
+  if (!e.backend_neu) delete e.backend_def;
+  return {eintrag: e, alt_name: A.alt};
+}
+async function vorschauLaden() {
+  try { A.vorschau = await api('/api/baukasten/vorschau', asDaten()); }
+  catch (err) { A.vorschau = {fehler: err.message}; }
+  $('#as-speichern').disabled = $('#as-uebernehmen').disabled = !!A.vorschau.fehler;
+  zeichneSchritt();
+}
+async function asSpeichern(uebernehmen) {
+  try {
+    await api('/api/baukasten/speichern', asDaten());
+    hinweis(`${A.e.name} gespeichert in bearbeiten/`);
+    A = null;
+    if (uebernehmen) { await auftrag('uebernehmen'); } else { wechsel('dienste'); }
+  } catch (err) { zeigeFehler(err.message); }
 }
 
 // Dateien

@@ -17,7 +17,7 @@ LABEL org.opencontainers.image.title="haproxy-ui" \
 RUN apk add --no-cache tini openssl \
  && pip install --no-cache-dir "paho-mqtt>=2,<3"
 COPY app/ /app/
-RUN sed -i 's/\r$//' /app/app.py && python3 -m py_compile /app/app.py
+RUN sed -i 's/\r$//' /app/*.py && python3 -m py_compile /app/app.py /app/baukasten.py
 
 ENV HAPROXY_DIR=/haproxy \
     UI_PORT=8080 \
