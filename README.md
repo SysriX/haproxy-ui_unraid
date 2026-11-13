@@ -15,6 +15,7 @@ Weitere Unraid-Pakete: [haproxy-unraid](https://github.com/SysriX/haproxy_unraid
 | Dateien | alle Dateien in `bearbeiten/` mit Editor (Strg+S speichert), neue Listen anlegen |
 | Änderungen | Unterschied zur laufenden Konfiguration, Knöpfe **Prüfen**, **Prüfen und übernehmen**, **Verwerfen**, **Zurück** |
 | Zertifikate | Restlaufzeit aller Zertifikate, `certs.conf`, „Jetzt aus Cert Warden holen“ |
+| Aussehen | Theme-Auswahl oben rechts: **Konsole** (dunkel, plastisch, Akzent Orange · Grün · Blau – Standard), Dunkel schlicht, Hell, wie das System |
 
 ### Assistent „Neue Adresse“ (Baukasten)
 
